@@ -109,13 +109,15 @@ final class Latency {
     }
 
     func summary(of samples: [Sample]) -> String {
-        let hits = samples.filter { $0.hit == true }.count
+        // Presses that did not change the audience surface (overview keys, browsing) carry no contents event.
+        let changed = samples.filter { $0.contents != nil }
+        let hits = changed.filter { $0.hit == true }.count
         func line(_ name: String, _ values: [Double]) -> String {
             guard let s = Latency.stats(values) else { return "\(name): no data" }
             return String(format: "%@: median %.2f ms, p95 %.2f ms, max %.2f ms (n=%d)", name, s.median, s.p95, s.max, s.count)
         }
         return [
-            "samples: \(samples.count), warm-cache hits: \(hits)/\(samples.count)",
+            "samples: \(samples.count) (\(samples.count - changed.count) without an audience change), warm-cache hits: \(hits)/\(changed.count)",
             line("input → event received by app", samples.map(\.inputToReceived)),
             line("input → command applied", samples.compactMap(\.inputToApplied)),
             line("received → audience contents set (our code)", samples.compactMap(\.receivedToContents)),

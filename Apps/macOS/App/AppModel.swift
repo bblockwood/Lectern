@@ -15,6 +15,18 @@ enum AppAction: Equatable {
     case startPresenting
     case swapDisplays
     case escape
+    /// Tab: overview on/off (SPEC §6.3).
+    case toggleOverview
+    /// A typed digit for jump-by-number.
+    case digit(Character)
+    /// Return: jump if digits were typed, commit a browse in the overview, otherwise next.
+    case returnKey
+    /// ↑/↓: next/previous normally, a row move in the overview grid.
+    case verticalArrow(up: Bool)
+    /// ⌘F: open the overview with the search field focused.
+    case focusSearch
+    /// A link clicked on a slide surface.
+    case followLink(LinkID)
 }
 
 struct Banner: Identifiable, Equatable {
@@ -35,6 +47,13 @@ final class AppModel {
     private(set) var isPresenting = false
     private(set) var banners: [Banner] = []
     private(set) var rehearsalAudienceWindowVisible = false
+    private(set) var overviewVisible = false
+    /// Digits typed for jump-by-number; shown as an overlay until Return or a timeout.
+    private(set) var jumpBuffer = ""
+    /// Bumped to ask the overview to focus its search field.
+    private(set) var searchFocusRequest = 0
+    /// Columns of the overview grid, reported by the view, for ↑/↓ moves.
+    var overviewColumns = 4
     let recents = RecentsStore()
     let displays = DisplayManager()
 
@@ -42,7 +61,11 @@ final class AppModel {
     @ObservationIgnored private var power: PowerAssertion?
     @ObservationIgnored private var escapeArmedUntil: Date?
     @ObservationIgnored private var audienceDisplayLostBanner: Banner?
+    @ObservationIgnored private var jumpBufferTimeout: Task<Void, Never>?
     @ObservationIgnored private let log = Logger(subsystem: "dev.lectern", category: "app")
+
+    /// SPEC §4.3: URI links are ignored unless this is on (`defaults write dev.lectern.mac LecternOpenURILinks -bool YES`).
+    var opensURILinks: Bool { UserDefaults.standard.bool(forKey: "LecternOpenURILinks") }
 
     /// Surround colour for letterboxing (SPEC §3.3; default black).
     var surroundColor: CGColor = CGColor(gray: 0, alpha: 1)
@@ -57,7 +80,14 @@ final class AppModel {
         do {
             let document = try PresentationDocument.load(url: url)
             endPresenting()
-            presentation = Presentation(document: document, surroundColor: surroundColor)
+            overviewVisible = false
+            jumpBuffer = ""
+            let presentation = Presentation(document: document, surroundColor: surroundColor)
+            self.presentation = presentation
+            for surface in [presentation.audienceSurface, presentation.currentSurface] {
+                surface.view.onLinkActivate = { [weak self] id in _ = self?.perform(.followLink(id)) }
+            }
+            if let target = document.pdfpc?.targetDuration { presentation.controller.setTimerTarget(target); presentation.refreshState() }
             recents.add(url)
             dismissBanners(kind: .error)
             log.notice("opened \(url.lastPathComponent, privacy: .public): \(document.pageCount) pages, \(document.frames.frameCount) frames")
@@ -78,6 +108,8 @@ final class AppModel {
 
     func close() {
         endPresenting()
+        overviewVisible = false
+        jumpBuffer = ""
         presentation = nil
     }
 
@@ -105,7 +137,50 @@ final class AppModel {
         guard let presentation else { return false }
         switch action {
         case .command(let command):
-            presentation.apply(command)
+            if overviewVisible, let move = overviewMove(for: command) {
+                moveOverviewSelection(by: move)
+            } else {
+                presentation.apply(command)
+            }
+        case .verticalArrow(let up):
+            if overviewVisible {
+                moveOverviewSelection(by: (up ? -1 : 1) * overviewColumns)
+            } else {
+                presentation.apply(up ? .previous : .next)
+            }
+        case .toggleOverview:
+            setOverview(visible: !overviewVisible)
+        case .digit(let digit):
+            guard jumpBuffer.count < 5 else { break }
+            jumpBuffer.append(digit)
+            jumpBufferTimeout?.cancel()
+            jumpBufferTimeout = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(4))
+                guard !Task.isCancelled else { return }
+                self?.jumpBuffer = ""
+            }
+        case .returnKey:
+            if !jumpBuffer.isEmpty {
+                let label = jumpBuffer
+                jumpBuffer = ""
+                jumpBufferTimeout?.cancel()
+                if presentation.document.frames.frame(withLabel: label) != nil {
+                    presentation.apply(.goToFrameLabel(label))
+                    setOverview(visible: false)
+                } else {
+                    show(Banner(kind: .info, text: "No frame labelled \(label)."), autoDismissAfter: 2)
+                }
+            } else if overviewVisible {
+                presentation.apply(.commitBrowse)
+                setOverview(visible: false)
+            } else {
+                presentation.apply(.next)
+            }
+        case .focusSearch:
+            setOverview(visible: true)
+            searchFocusRequest += 1
+        case .followLink(let id):
+            follow(link: id, in: presentation)
         case .toggleAudience(let mode):
             presentation.apply(.setAudienceMode(presentation.state.audienceMode == mode ? .live : mode))
         case .toggleFreeze:
@@ -124,8 +199,82 @@ final class AppModel {
         return true
     }
 
-    /// Single Esc cancels a browse; Esc twice within one second ends presenting (SPEC §6.5).
+    // MARK: - Overview and jumping (SPEC §6.3)
+
+    func setOverview(visible: Bool) {
+        guard visible != overviewVisible else { return }
+        overviewVisible = visible
+        if !visible, let presentation, presentation.state.isBrowsing {
+            presentation.apply(.cancelBrowse)
+        }
+    }
+
+    /// Browse privately to `page` from the overview (click or arrow keys).
+    func browse(to page: Int) {
+        guard let presentation else { return }
+        if !presentation.state.isBrowsing { presentation.apply(.beginBrowse) }
+        presentation.apply(.browseTo(page))
+    }
+
+    /// Commit the browsed page (double-click, Return) and close the overview.
+    func commitBrowse() {
+        presentation?.apply(.commitBrowse)
+        setOverview(visible: false)
+    }
+
+    private func overviewMove(for command: Command) -> Int? {
+        switch command {
+        case .next, .nextFrame: 1
+        case .previous, .previousFrame: -1
+        default: nil
+        }
+    }
+
+    private func moveOverviewSelection(by delta: Int) {
+        guard let presentation else { return }
+        let frames = presentation.document.frames
+        let current = frames.frame(containing: presentation.state.presenterPage).index
+        let target = min(max(current + delta, 0), frames.frameCount - 1)
+        guard target != current else { return }
+        browse(to: frames.frames[target].firstPage)
+    }
+
+    private func follow(link id: LinkID, in presentation: Presentation) {
+        guard let link = presentation.document.link(id) else { return }
+        switch link.action {
+        case .uri(let url):
+            guard opensURILinks else {
+                log.notice("ignored URI link \(url.absoluteString, privacy: .public)")
+                show(Banner(kind: .info, text: "Link to \(url.host() ?? url.absoluteString) ignored (web links are off)."), autoDismissAfter: 2)
+                return
+            }
+            let alert = NSAlert()
+            alert.messageText = "Open link in the browser?"
+            alert.informativeText = url.absoluteString
+            alert.addButton(withTitle: "Open")
+            alert.addButton(withTitle: "Cancel")
+            if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(url) }
+        case .launch(let path):
+            log.notice("launch link ignored until M9: \(path, privacy: .public)")
+        case .unsupported:
+            break
+        case .goToPage, .named:
+            presentation.apply(.followLink(id))
+        }
+    }
+
+    /// Esc: clears typed digits, then closes the overview, then cancels a browse; twice within a second ends presenting.
     private func handleEscape() -> Bool {
+        if !jumpBuffer.isEmpty {
+            jumpBuffer = ""
+            jumpBufferTimeout?.cancel()
+            return true
+        }
+        if overviewVisible {
+            setOverview(visible: false)
+            escapeArmedUntil = nil
+            return true
+        }
         if let presentation, presentation.state.isBrowsing {
             presentation.apply(.cancelBrowse)
             escapeArmedUntil = nil

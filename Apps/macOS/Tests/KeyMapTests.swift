@@ -24,7 +24,12 @@ private func key(_ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.M
         #expect(KeyMap.action(for: key("\u{F703}", modifiers: .shift)) == .command(.nextFrame))
         #expect(KeyMap.action(for: key("\u{F702}", modifiers: .shift)) == .command(.previousFrame))
         #expect(KeyMap.action(for: key(" ")) == .command(.next))
-        #expect(KeyMap.action(for: key("\r")) == .command(.next))
+        #expect(KeyMap.action(for: key("\r")) == .returnKey)
+        #expect(KeyMap.action(for: key("\u{F701}")) == .verticalArrow(up: false))   // ↓
+        #expect(KeyMap.action(for: key("\u{F700}")) == .verticalArrow(up: true))    // ↑
+        #expect(KeyMap.action(for: key("\t")) == .toggleOverview)
+        #expect(KeyMap.action(for: key("7")) == .digit("7"))
+        #expect(KeyMap.action(for: key("f", modifiers: .command)) == .focusSearch)
         #expect(KeyMap.action(for: key("n")) == .command(.next))
         #expect(KeyMap.action(for: key("p")) == .command(.previous))
         #expect(KeyMap.action(for: key("\u{7f}")) == .command(.back))

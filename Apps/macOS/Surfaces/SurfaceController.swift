@@ -49,6 +49,7 @@ final class SurfaceController {
         shown = nil
         view.showSolid(color)
         fetching = nil
+        view.links = []
         Latency.shared.contentsShown(role: role, hit: true, page: nil)
         if Latency.shared.measuresFrames { view.requestFrameCallback() }
     }
@@ -93,6 +94,7 @@ final class SurfaceController {
 
     private func present(_ image: CGImage, for request: RenderRequest, hit: Bool) {
         view.show(image: image)
+        view.links = request.crop.isFull ? document.links(onPage: request.pageIndex) : []
         shown = request
         Latency.shared.contentsShown(role: role, hit: hit, page: request.pageIndex)
         if Latency.shared.measuresFrames { view.requestFrameCallback() }

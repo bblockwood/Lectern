@@ -15,7 +15,7 @@ public final class SessionController {
     public init(document: PresentationDocument, initialState: SessionState = SessionState()) {
         self.document = document
         self.state = initialState
-        self.reducer = SessionReducer(frames: document.frames)
+        self.reducer = SessionReducer(document: document)
     }
 
     public func apply(_ command: Command, now: Date = Date()) {
@@ -45,7 +45,7 @@ public final class SessionController {
         let oldFrame = document.frames.frame(containing: state.committedPage)
         let build = document.frames.buildIndex(of: state.committedPage)
         document = newDocument
-        reducer = SessionReducer(frames: newDocument.frames)
+        reducer = SessionReducer(document: newDocument)
         var new = state
         new.committedPage = SessionController.restoredPage(label: oldFrame.label, build: build,
                                                           oldPage: state.committedPage, in: newDocument.frames)

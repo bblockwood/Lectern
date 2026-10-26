@@ -43,13 +43,57 @@ final class SelfTest {
         try? await Task.sleep(for: .seconds(1.5))   // let the first prefetch ring land
         for _ in 0..<forward { await press(keyCode: 124, character: "\u{F703}") }   // → next
         captureScreenshots()
+        if CommandLine.arguments.contains("-overview") {
+            await press(keyCode: 48, character: "\t")                               // Tab: overview
+            await press(keyCode: 124, character: "\u{F703}")                        // → browse one frame on
+            try? await Task.sleep(for: .seconds(1.5))                                 // thumbnails
+            captureScreenshots(suffix: "-overview")
+            await press(keyCode: 53, character: "\u{1b}")                           // Esc: cancel + close
+        }
         for _ in 0..<forward { await press(keyCode: 123, character: "\u{F702}") }   // ← previous
         // A few frame jumps and a back, which may legitimately miss.
         await press(keyCode: 124, character: "\u{F703}", shift: true)
         await press(keyCode: 124, character: "\u{F703}", shift: true)
         await press(keyCode: 123, character: "\u{F702}", shift: true)
+        if CommandLine.arguments.contains("-roundtrip") { await roundTrip(presentation: presentation) }
         report(presentation: presentation)
         exit(0)
+    }
+
+    /// M2 acceptance: click a link into the appendix on the presenter's current slide, press Delete to return.
+    private func roundTrip(presentation: Presentation) async {
+        guard let model = (NSApp.delegate as? AppDelegate)?.model else { return }
+        _ = model.perform(.command(.goToPage(0)))
+        // Find the first page with a GoTo link into the appendix.
+        guard let end = presentation.document.endOfTalkPage,
+              let (page, link) = (0...end).lazy.compactMap({ page -> (Int, PageLink)? in
+                  presentation.document.links(onPage: page).first { link in
+                      // A body link (not beamer's navigation bar at the very bottom) that jumps past the end of the talk.
+                      guard link.rect.y < 0.9, case .goToPage(let target) = link.action else { return false }
+                      return target > end
+                  }.map { (page, $0) }
+              }).first else { print("ROUNDTRIP: no appendix link in this deck"); return }
+        _ = model.perform(.command(.goToPage(page)))
+        try? await Task.sleep(for: .milliseconds(300))
+        let view = presentation.currentSurface.view
+        guard let window = view.window else { print("ROUNDTRIP FAIL: no window"); return }
+        let slide = view.slideFrame
+        let center = NSPoint(x: slide.minX + slide.width * (link.rect.x + link.rect.width / 2),
+                             y: slide.minY + slide.height * (1 - (link.rect.y + link.rect.height / 2)))
+        let windowPoint = view.convert(center, to: nil)
+        let before = presentation.state.committedPage
+        let down = NSEvent.mouseEvent(with: .leftMouseDown, location: windowPoint, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                      windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1)!
+        let up = NSEvent.mouseEvent(with: .leftMouseUp, location: windowPoint, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                    windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0)!
+        NSApp.postEvent(down, atStart: false)
+        NSApp.postEvent(up, atStart: false)
+        try? await Task.sleep(for: .milliseconds(300))
+        let afterClick = presentation.state.committedPage
+        await press(keyCode: 51, character: "\u{7f}")   // Delete → back
+        let afterBack = presentation.state.committedPage
+        let ok = afterClick > end && afterBack == before
+        print("ROUNDTRIP \(ok ? "OK" : "FAIL"): page \(before + 1) → click link → page \(afterClick + 1) → Delete → page \(afterBack + 1); history \(presentation.state.history), forward \(presentation.state.forwardHistory)")
     }
 
     private func press(keyCode: UInt16, character: String, shift: Bool = false) async {
@@ -70,7 +114,7 @@ final class SelfTest {
     }
 
     /// `-screenshot DIR` renders the presenter and audience windows in-process (no screen-recording permission needed).
-    private func captureScreenshots() {
+    private func captureScreenshots(suffix: String = "") {
         guard let index = CommandLine.arguments.firstIndex(of: "-screenshot"), CommandLine.arguments.indices.contains(index + 1) else { return }
         let dir = URL(fileURLWithPath: CommandLine.arguments[index + 1])
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -90,7 +134,7 @@ final class SelfTest {
             }
             layer.render(in: ctx)
             guard let image = ctx.makeImage() else { continue }
-            let name = (window is PresenterWindow ? "presenter" : "audience") + ".png"
+            let name = (window is PresenterWindow ? "presenter" : "audience") + suffix + ".png"
             let rep = NSBitmapImageRep(cgImage: image)
             try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent(name))
         }
@@ -99,7 +143,7 @@ final class SelfTest {
     private func report(presentation: Presentation) {
         let name = url.lastPathComponent
         let summary = Latency.shared.summary(of: samples)
-        let misses = samples.enumerated().filter { $0.element.hit != true }.map { "#\($0.offset)" }
+        let misses = samples.enumerated().filter { $0.element.contents != nil && $0.element.hit != true }.map { "#\($0.offset)" }
         print("SELFTEST \(name): pages \(presentation.document.pageCount), frames \(presentation.frameCount)")
         print(summary)
         print("misses: \(misses.isEmpty ? "none" : misses.joined(separator: " "))")

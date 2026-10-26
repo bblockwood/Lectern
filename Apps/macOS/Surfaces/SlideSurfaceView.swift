@@ -1,5 +1,6 @@
 import AppKit
 import PresenterCore
+import PresenterProtocol
 import QuartzCore
 
 /// A CALayer-backed slide surface (SPEC §3.3). It only ever swaps `contents` for a finished bitmap; it never
@@ -8,6 +9,13 @@ final class SlideSurfaceView: NSView {
     private let slideLayer = CALayer()
     private var imageAspect: CGFloat?
     private var displayLink: CADisplayLink?
+    private var trackingArea: NSTrackingArea?
+
+    /// Link rects of the page on screen (SPEC §4.3). Clicks inside them call `onLinkActivate`.
+    var links: [PageLink] = [] {
+        didSet { if links.isEmpty != oldValue.isEmpty { window?.invalidateCursorRects(for: self) } }
+    }
+    var onLinkActivate: ((LinkID) -> Void)?
 
     var surroundColor: CGColor = CGColor(gray: 0, alpha: 1) {
         didSet { layer?.backgroundColor = surroundColor }
@@ -37,6 +45,52 @@ final class SlideSurfaceView: NSView {
 
     override var isOpaque: Bool { true }
     override var acceptsFirstResponder: Bool { false }
+    /// Clicks on the audience window (which never becomes key) must still reach us.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// Where the slide image sits inside the view, in view coordinates.
+    var slideFrame: CGRect { slideLayer.frame }
+
+    // MARK: - Links
+
+    /// The link under a point in view coordinates, if any.
+    func link(at point: NSPoint) -> PageLink? {
+        guard !links.isEmpty, let normalized = normalizedPoint(for: point) else { return nil }
+        return LinkHitTester.link(at: normalized, in: links)
+    }
+
+    /// Maps a view point to normalised slide coordinates (origin top-left), nil outside the slide.
+    func normalizedPoint(for point: NSPoint) -> NormalizedPoint? {
+        let frame = slideLayer.frame
+        guard frame.width > 0, frame.height > 0, frame.contains(point) else { return nil }
+        return NormalizedPoint(x: (point.x - frame.minX) / frame.width, y: 1 - (point.y - frame.minY) / frame.height)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if link(at: point) != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let link = link(at: point) {
+            onLinkActivate?(link.id)
+        } else {
+            super.mouseDown(with: event)
+        }
+    }
 
     // MARK: - Geometry
 

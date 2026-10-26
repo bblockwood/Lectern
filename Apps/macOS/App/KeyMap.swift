@@ -14,17 +14,22 @@ enum KeyMap {
             switch special {
             case .rightArrow: return .command(shift ? .nextFrame : .next)
             case .leftArrow: return .command(shift ? .previousFrame : .previous)
-            case .downArrow, .pageDown: return .command(.next)
-            case .upArrow, .pageUp: return .command(.previous)
-            case .carriageReturn, .enter: return .command(.next)   // M2: digits + Return jumps instead
+            case .pageDown: return .command(.next)
+            case .pageUp: return .command(.previous)
+            case .downArrow: return .verticalArrow(up: false)
+            case .upArrow: return .verticalArrow(up: true)
+            case .carriageReturn, .enter: return .returnKey
             case .delete, .backspace, .deleteForward: return .command(.back)
             case .f5: return .startPresenting
+            case .tab, .backTab: return .toggleOverview
             default: return nil
             }
         }
 
         guard let characters = event.charactersIgnoringModifiers?.lowercased(), let key = characters.first else { return nil }
         if key == "\u{1b}" { return .escape }
+        if key == "\t" { return .toggleOverview }
+        if key == "\r" || key == "\u{3}" { return .returnKey }
         if command && option {
             switch key {
             case "d": return .swapDisplays
@@ -33,8 +38,13 @@ enum KeyMap {
             }
         }
         if command {
-            return key == "[" ? .command(.back) : nil   // other ⌘ shortcuts belong to the menu
+            switch key {
+            case "[": return .command(.back)
+            case "f": return .focusSearch
+            default: return nil   // other ⌘ shortcuts belong to the menu
+            }
         }
+        if key.isNumber, !shift, !option { return .digit(key) }
         switch key {
         case " ", "n": return .command(.next)
         case "p": return .command(.previous)
