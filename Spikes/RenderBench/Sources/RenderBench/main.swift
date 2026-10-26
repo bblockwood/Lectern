@@ -65,7 +65,7 @@ struct Renderer {
         let fit = fitRect(for: page, width: width, height: height)
         ctx.setFillColor(CGColor(gray: 1, alpha: 1)); ctx.fill(fit)
         ctx.interpolationQuality = .high
-        ctx.concatenate(page.getDrawingTransform(.cropBox, rect: fit, rotate: 0, preserveAspectRatio: true))
+        ctx.concatenate(pageTransform(page, onto: fit))
         ctx.drawPDFPage(page)
         ctx.restoreGState()
         guard let image = ctx.makeImage() else { fatalError("makeImage failed") }
@@ -206,7 +206,7 @@ for name in ["pdfpc-notes", "pdfcomment-notes"] {
             let fit = renderer.fitRect(for: page, width: 1920, height: 1080)
             ctx.setFillColor(CGColor(gray: 1, alpha: 1)); ctx.fill(fit)
             ctx.interpolationQuality = .high
-            ctx.concatenate(page.getDrawingTransform(.cropBox, rect: fit, rotate: 0, preserveAspectRatio: true))
+            ctx.concatenate(pageTransform(page, onto: fit))
             pkPage.displaysAnnotations = annotations
             pkPage.draw(with: .cropBox, to: ctx)
             return ctx.makeImage()!
@@ -314,4 +314,12 @@ print("|---|---|---|---|")
 for t in targets {
     let mb = Double(t.width * t.height * 4) / 1_048_576
     print("| \(t.name) | \(String(format: "%.1f", mb)) | \(String(format: "%.0f", mb * 6)) | \(String(format: "%.0f", mb * 12)) |")
+}
+
+/// Maps the page's rotated crop box exactly onto `rect`. `CGPDFPageGetDrawingTransform` only scales *down* into the
+/// rect it is given (CGPDFPage.h), so go through the unit square and stretch onto `rect` ourselves.
+func pageTransform(_ page: CGPDFPage, onto rect: CGRect) -> CGAffineTransform {
+    let toUnit = page.getDrawingTransform(.cropBox, rect: CGRect(x: 0, y: 0, width: 1, height: 1), rotate: 0, preserveAspectRatio: false)
+    let unitToRect = CGAffineTransform(translationX: rect.minX, y: rect.minY).scaledBy(x: rect.width, y: rect.height)
+    return toUnit.concatenating(unitToRect)
 }

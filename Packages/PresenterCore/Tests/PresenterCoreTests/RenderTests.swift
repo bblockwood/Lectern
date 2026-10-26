@@ -57,6 +57,28 @@ private func pixel(_ image: CGImage, x: Int, y: Int) -> (r: UInt8, g: UInt8, b: 
         #expect(leftSample == (255, 255, 255))
     }
 
+    @Test func largeRendersScaleThePageUp() throws {
+        // CGPDFPageGetDrawingTransform never scales up: a regression here draws the page at native point size in the
+        // middle of a white bitmap. The fraction of inked pixels must not depend on the render size.
+        let doc = try PresentationDocument.load(url: Fixtures.url("basic-169.pdf"))
+        let page = doc.source.page(at: 0)!
+        func inkFraction(width: Int, height: Int) throws -> Double {
+            let request = RenderRequest(pageIndex: 0, pixelSize: PixelSize(width: width, height: height))
+            let image = try #require(PageRenderer.render(page: page, pageSize: doc.pages[0].size, request: request))
+            var inked = 0, samples = 0
+            for y in stride(from: 0, to: height, by: 2) {
+                for x in stride(from: 0, to: width, by: 2) {
+                    samples += 1
+                    if pixel(image, x: x, y: y) != (255, 255, 255) { inked += 1 }
+                }
+            }
+            return Double(inked) / Double(samples)
+        }
+        let small = try inkFraction(width: 240, height: 135)     // below the 454×255 pt page: always drawn correctly
+        let large = try inkFraction(width: 1920, height: 1080)   // four times the page: must be scaled up
+        #expect(large > small / 3 && large < small * 3, "ink fraction should be scale-invariant, got \(small) vs \(large)")
+    }
+
     @Test func displayP3RequestsRenderToo() throws {
         let doc = try PresentationDocument.load(url: Fixtures.url("tikz-heavy.pdf"))
         let request = RenderRequest(pageIndex: 3, pixelSize: PixelSize(width: 320, height: 180), colorSpace: .displayP3)
