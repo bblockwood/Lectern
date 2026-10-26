@@ -167,3 +167,14 @@ One click there, one keypress back. The same click works on the audience window 
 3. Type `6` then Return from the normal view: jump to frame 6. Type `99` Return: a banner says there is no such frame.
 4. Tab, ⌘F, type `backup`: results listed by frame; ↓ walks them (preview follows), Return commits.
 5. B, W, F during a talk: audience goes black / white / stays frozen while you move on; the status bar shows BLACK, WHITE, FROZEN; pressing the same key again returns to LIVE.
+
+## M3: Mac notes, pointer, live reload (branch `m3-mac-notes`)
+
+Started 2026-10-25.
+
+### Plan
+
+1. **Core, notes and sidecar.** `Sidecar` (versioned JSON `<deck>.lectern.json` next to the PDF, else in Application Support keyed by bookmark; unknown keys tolerated; corrupt files logged and ignored). Notes sources as pure parsers: embedded `/Text` annotations (pdfpc and pdfcomment shapes from `Fixtures/README.md`), the `.pdfpc` JSON file (format 2, legacy `[notes]` fallback), Beamer second-screen split detection by aspect ratio with the slide half as a crop, PowerPoint notes from a `.pptx` (own minimal ZIP reader + `XMLParser`; hidden slides skipped; count mismatch → warning), and `NotesMerger` with the §5.1 priority and frame fallback. Block-level Markdown splitting for the pane. Tests on fixtures 3, 4, 5, a synthetic pptx, and sidecar round-trips.
+2. **Core, live reload.** `DeckWatcher` on the deck directory (DispatchSource), 300 ms debounce, size stabilisation, parse-before-swap; `SessionController.replaceDocument` already restores by (label, build). Tests with a temp copy of fixture 2 replaced atomically.
+3. **App.** Notes pane (Markdown, ⌘+/⌘− persisted, frame fallback, source badge, second-screen notes as a rendered crop, inline editor writing user notes to the sidecar); one-time split confirmation stored in the sidecar; sidecar load/save of settings, notes and last position; live reload with cache rebuild and image swap only when ready; pointer (L) with glow and trail on the audience and presenter surfaces, hidden after 2 s; ephemeral mouse ink (D/E) mirrored as vectors; banners for reload and split confirmation.
+4. **Acceptance.** Notes checks on fixtures 3, 4, 5 (and the synthetic pptx until Ben's fixture 9 arrives) in tests and the self-test; a self-test that recompiles fixture 2 mid-run (`make -C Fixtures overlays.pdf` after touching the source) and confirms the position survives.
