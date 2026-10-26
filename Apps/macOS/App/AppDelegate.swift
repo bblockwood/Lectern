@@ -1,0 +1,134 @@
+import AppKit
+import PresenterCore
+import PresenterProtocol
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private(set) var model: AppModel!
+    private var presenterWindow: PresenterWindowController!
+    private var keyMonitor: Any?
+    private var selfTest: SelfTest?
+    private var recentsMenu: NSMenu?
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        model = AppModel()
+        let (menu, recents) = MainMenu.build(target: self)
+        recentsMenu = recents
+        recents.delegate = self
+        NSApp.mainMenu = menu
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        presenterWindow = PresenterWindowController(model: model)
+        presenterWindow.showWindow(nil)
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            guard let self, self.handle(keyEvent: event) else { return event }
+            return nil
+        }
+        NSApp.activate()
+
+        if let test = SelfTest.fromArguments(CommandLine.arguments) {
+            selfTest = test
+            test.run(in: model)
+        } else if let path = CommandLine.arguments.dropFirst().first(where: { $0.lowercased().hasSuffix(".pdf") }) {
+            model.open(url: URL(fileURLWithPath: path))
+        }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if let url = urls.first { model.open(url: url) }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        model.endPresenting()
+    }
+
+    // MARK: - Keyboard
+
+    /// Every key press in the app goes through `KeyMap`; text editing keeps its keys (M2 jump field, M3 notes editor).
+    private func handle(keyEvent event: NSEvent) -> Bool {
+        if let responder = NSApp.keyWindow?.firstResponder, responder is NSTextView { return false }
+        guard let action = KeyMap.action(for: event) else { return false }
+        Latency.shared.inputReceived(at: event.timestamp)
+        return model.perform(action)
+    }
+
+    // MARK: - Menu actions
+
+    @objc func openDocument(_ sender: Any?) { model.openPanel() }
+    @objc func closeDocument(_ sender: Any?) { model.close() }
+    @objc func startPresenting(_ sender: Any?) { model.startPresenting() }
+    @objc func endPresenting(_ sender: Any?) { model.endPresenting() }
+    @objc func swapDisplays(_ sender: Any?) { model.swapDisplays() }
+    @objc func toggleRehearsalAudienceWindow(_ sender: Any?) { model.toggleRehearsalAudienceWindow() }
+    @objc func nextBuild(_ sender: Any?) { _ = model.perform(.command(.next)) }
+    @objc func previousBuild(_ sender: Any?) { _ = model.perform(.command(.previous)) }
+    @objc func nextFrame(_ sender: Any?) { _ = model.perform(.command(.nextFrame)) }
+    @objc func previousFrame(_ sender: Any?) { _ = model.perform(.command(.previousFrame)) }
+    @objc func goBack(_ sender: Any?) { _ = model.perform(.command(.back)) }
+    @objc func toggleBlack(_ sender: Any?) { _ = model.perform(.toggleAudience(.black)) }
+    @objc func toggleWhite(_ sender: Any?) { _ = model.perform(.toggleAudience(.white)) }
+    @objc func toggleFreeze(_ sender: Any?) { _ = model.perform(.toggleFreeze) }
+    @objc func toggleTimer(_ sender: Any?) { _ = model.perform(.toggleTimer) }
+    @objc func resetTimer(_ sender: Any?) { _ = model.perform(.resetTimer) }
+    @objc func openDisplaySettings(_ sender: Any?) { DisplayManager.openDisplaySettings() }
+
+    @objc func setTargetDuration(_ sender: NSMenuItem) {
+        if let minutes = sender.representedObject as? Int {
+            model.setTargetDuration(minutes > 0 ? TimeInterval(minutes * 60) : nil)
+        } else {
+            model.askForTargetDuration()
+        }
+    }
+
+    @objc func openRecent(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL { model.open(url: url) }
+    }
+
+    @objc func clearRecents(_ sender: Any?) { model.recents.clear() }
+
+    // MARK: - NSMenuDelegate (Open Recent)
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === recentsMenu else { return }
+        menu.removeAllItems()
+        for url in model.recents.urls {
+            let item = NSMenuItem(title: url.lastPathComponent, action: #selector(openRecent(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = url
+            item.toolTip = url.path
+            menu.addItem(item)
+        }
+        if !model.recents.urls.isEmpty { menu.addItem(.separator()) }
+        let clear = NSMenuItem(title: "Clear Menu", action: #selector(clearRecents(_:)), keyEquivalent: "")
+        clear.target = self
+        clear.isEnabled = !model.recents.urls.isEmpty
+        menu.addItem(clear)
+    }
+
+    // MARK: - Validation
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(startPresenting(_:)): return model.presentation != nil && !model.isPresenting
+        case #selector(endPresenting(_:)): return model.isPresenting
+        case #selector(swapDisplays(_:)): return model.displays.assignment.audience != nil
+        case #selector(toggleRehearsalAudienceWindow(_:)):
+            item.state = model.rehearsalAudienceWindowVisible ? .on : .off
+            return model.isPresenting && model.displays.assignment.audience == nil
+        case #selector(closeDocument(_:)), #selector(nextBuild(_:)), #selector(previousBuild(_:)), #selector(nextFrame(_:)),
+             #selector(previousFrame(_:)), #selector(goBack(_:)), #selector(toggleBlack(_:)), #selector(toggleWhite(_:)),
+             #selector(toggleFreeze(_:)), #selector(toggleTimer(_:)), #selector(resetTimer(_:)):
+            return model.presentation != nil
+        case #selector(setTargetDuration(_:)):
+            if let minutes = item.representedObject as? Int {
+                let current = model.presentation?.state.timer.target
+                item.state = (minutes == 0 && current == nil) || (minutes > 0 && current == TimeInterval(minutes * 60)) ? .on : .off
+            }
+            return model.presentation != nil
+        default: return true
+        }
+    }
+}

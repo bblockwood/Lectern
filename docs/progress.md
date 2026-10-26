@@ -43,3 +43,84 @@ Set up signing once: `cp Config/Local.xcconfig.example Config/Local.xcconfig`, p
 3. **PowerPoint fixture** (SPEC §12 item 9): export a small deck with speaker notes and one hidden slide to `Fixtures/ppt-export.pdf` and put the `.pptx` beside it as `Fixtures/ppt-export.pptx`.
 
 Nothing in M1 depends on these; they feed M3 (fixture 9), M4 (Spike A) and M8 (Spike B).
+
+## M1: Mac core presenting (branch `m1-mac-core`)
+
+Started 2026-10-25.
+
+### Plan
+
+1. **`Packages/PresenterProtocol`** (Foundation only): `Command`, `AudienceMode`, `NormalizedPoint`, `SessionSnapshot`. Verify it builds for watchOS with `xcodebuild -destination 'generic/platform=watchOS'`.
+2. **`Packages/PresenterCore`**, depending on PresenterProtocol:
+   - `Document/`: `PresentationDocument` (CGPDFDocument for rendering, PDFKit for labels), `PageInfo`, `FrameIndex` with the §4.1 grouping rules as a pure function.
+   - `Session/`: `SessionState`, a pure `SessionReducer` implementing the §3.2 semantics, and a `@MainActor SessionController` that owns the state and notifies on change.
+   - `Timing/`: `TimerState` (auto-start on first advance, pause, reset, target) and the §6.7 pace indicator.
+   - `Render/`: `PageRenderer` (the Spike C recipe), `RenderRequest` keyed by page, pixel size, crop and colour space, an LRU `ImageStore` with a lock-protected synchronous lookup for the warm path, the `RenderCache` actor with one render in flight, priority ordering, cancellation and `os_log` on misses, and a pure `PrefetchPlanner` for §3.3.
+   - Tests: frame grouping on `overlays.pdf`, `basic-169.pdf`, `huge.pdf` and a label-less PDF; malformed file fails cleanly; navigation semantics and the history stack; timer; cache hit/miss/prefetch/cancel; prefetch plan.
+3. **`Apps/macOS`** (AppKit lifecycle, SwiftUI chrome), `project.yml` at the repo root:
+   - Open via panel, drag-and-drop onto the window or Dock, `application(_:open:)`, and a recents list (UserDefaults bookmarks).
+   - `SlideSurfaceView`: CALayer-backed, swaps `contents` only when an image is ready, used for audience, current and preview.
+   - `DisplayManager`: built-in = presenter, largest external = audience, remembered per display name+resolution, swap (⌥⌘D), mirroring warning with a button to Displays settings, hot-plug via `didChangeScreenParametersNotification` with a banner and automatic restore.
+   - Presenting mode (⌥⌘P / F5, Esc twice to end): borderless audience window at shielding level on the audience display, power assertion, cursor hidden; single display → resizable audience window (rehearsal).
+   - Presenter layout: current slide left, next preview top right, notes placeholder bottom right, resizable with persisted fractions, status bar (frame label/total, build x/y, elapsed, wall clock, remaining vs target, LIVE/FROZEN/BLACK/WHITE), dark.
+   - Key map for the M1 subset of §6.5, clicker keys included.
+   - Signposts input → command applied → commit → next display-link target, and a `-selftest` launch mode that drives synthetic key events through the same path and prints latency statistics, so Principle 3 can be checked on every fixture from the terminal.
+4. **Acceptance**: self-test on all fixtures with the signpost numbers recorded here; no-flicker argument from the surface design plus a unit test that contents are never cleared on a miss; hot-plug logic unit-tested with a fake topology and left to Ben's checklist for the physical test.
+
+### M1 report (2026-10-25)
+
+**Done**
+
+- `Packages/PresenterProtocol` (Foundation only; verified to build for watchOS): `Command`, `AudienceMode`, `NormalizedPoint`, `LinkID`, `SessionSnapshot`.
+- `Packages/PresenterCore`: `PresentationDocument` (CoreGraphics for structure and rendering, PDFKit only for page labels), `FrameIndex` with the §4.1 rules, `SessionState` + pure `SessionReducer` (§3.2 semantics incl. `previousFrame` → last page of the previous frame, history on jumps, browse commit/cancel, timer auto-start on the first advance), `SessionController`, `TimerState` + `PaceIndicator`, `PageRenderer`, `ImageStore` (synchronous warm lookup, byte budget, pinned entries, distance-aware eviction), `RenderCache` actor (one render in flight, interactive-before-prefetch priority, cancellation, `os_log` on misses, `os_signpost` per render), `PrefetchPlanner` (§3.3 rings per surface). 54 tests.
+- `Apps/macOS` (`Lectern-macOS`, nib-less AppKit lifecycle, SwiftUI chrome): open via panel, drop onto the window, Finder/Dock (`CFBundleDocumentTypes`), command-line path, and a bookmark-backed recents list in the welcome screen and the File ▸ Open Recent menu; presenter window with current slide, next-page preview, notes placeholder, draggable persisted splits, status bar (frame label/total, build x/y, elapsed, wall clock, remaining vs target with pace colour, LIVE/FROZEN/BLACK/WHITE/REHEARSAL); audience window (borderless at shielding level on the audience display, or a resizable aspect-locked rehearsal window); `DisplayManager` (built-in = presenter, largest external = audience, remembered per name+resolution, ⌥⌘D swap, mirroring warning with a button to Displays settings, hot-plug via `didChangeScreenParametersNotification` with banner and automatic restore); power assertion while presenting; key map for the M1 subset of §6.5 plus clicker keys; Esc-twice to end; target duration menu; latency signposts (`dev.lectern`/`latency`) and a `-selftest` mode. 11 app tests (display assignment, key map).
+- Rendering path is exactly Spike C's recipe; the audience surface only ever swaps `CALayer.contents` for a finished bitmap and keeps the previous image on a miss.
+
+**Acceptance: Principle 3 with signposts on all fixtures**
+
+`Lectern -selftest <pdf>` opens the deck, presents (rehearsal window here; the real audience display when one is attached), posts →/←/⇧→ key events through the same monitor real keys use at ~0.5 s spacing, and reads the `dev.lectern` latency samples. MacBook Pro, built-in 120 Hz ProMotion display, Debug build, display kept awake with `caffeinate -u`:
+
+| Fixture | Samples | Warm hits | Event receipt → audience layer swapped, median / max (ms) | Input → swapped, median (ms) | Input → first vsync after the swap, median / p95 (ms) |
+|---|---|---|---|---|---|
+| basic-169 | 41 | 41 | 0.43 / 1.15 | 0.98 | 7.5 / 15.1 |
+| overlays | 47 | 47 | 0.43 / 3.19 | 0.94 | 7.5 / 18.4 |
+| notes-right | 13 | 13 | 0.46 / 0.58 | 1.16 | 9.6 / 14.9 |
+| notes-bottom | 13 | 13 | 0.42 / 0.56 | 0.97 | 9.4 / 12.8 |
+| pdfpc-notes | 21 | 21 | 0.42 / 0.52 | 0.90 | 7.6 / 15.6 |
+| pdfcomment-notes | 15 | 15 | 0.46 / 0.84 | 1.77 | 9.0 / 15.1 |
+| links-appendix | 23 | 23 | 0.43 / 0.57 | 1.00 | 8.8 / 15.5 |
+| tikz-heavy | 15 | 15 | 0.42 / 0.77 | 0.93 | 7.3 / 14.8 |
+| transitions | 27 | 27 | 0.43 / 0.57 | 1.08 | 9.4 / 15.6 |
+| huge (80 steps each way) | 163 | 163 | 0.44 / 1.16 | 0.94 | 7.8 / 16.0 |
+
+Reading: from the moment the app sees the key event to the moment the audience layer has its new contents is 0.4 ms median and never above 3.2 ms, i.e. the swap is committed in the same run-loop pass, far inside any refresh interval. Input → swap includes event delivery; its p95 (5–8 ms) is an artefact of posting synthetic events through the run loop, not of our code. The "first vsync" column is the first display-link tick after the swap, an upper bound on when the frame is on glass; its spread (8–18 ms) comes from the ProMotion panel idling at lower refresh rates between presses. On a fixed 60 Hz projector the commit lands within one refresh by construction; the render server's own pipeline cannot be observed from the app, only with a camera. Warm-cache hits were 100 % on every fixture, including `huge.pdf` running 185 evictions against the 768 MB budget, after switching eviction from pure LRU to farthest-from-focus (pure LRU produced one miss per backward run).
+
+**Acceptance: no flicker.** The surface never clears between pages: `SlideSurfaceView.show(image:)` swaps `contents` inside a `CATransaction` with actions disabled, a miss leaves the previous image up until the render completes and is still wanted, resizing keeps the old image scaled (`resizeAspect`) until the re-fitted render arrives, and black/white are solid layer colours. The self-test screenshots (`-screenshot DIR`, rendered in-process) show the presenter layout and a letterboxed 4:3 audience window with the committed page.
+
+**Acceptance: unplug/replug mid-talk.** The logic is unit-tested (`DisplayAssignerTests.hotPlugRemovesAudienceAndRestoresIt`) and wired: the audience display disappearing hides the audience window, shows a banner and keeps the presenter running; its return re-creates the full-screen window on it at the current page because the surfaces render from `SessionState`. The physical test is in the Ben checklist.
+
+**Known issues**
+
+- The one-time Focus prompt (§6.1) is not implemented; deferred to M10 polish.
+- The cursor is hidden only via `setHiddenUntilMouseMoves` when presenting starts; proper hide-over-audience-window handling arrives with the pointer in M3.
+- The surround colour is black and not yet exposed in a settings UI.
+- The pace indicator counts all frames; it will use `endOfTalkPage` (§4.2) once M2 adds it. "Remaining" shows a leading minus once over time.
+- Audience mode toggles (B/W/F) are wired because they are one-liners; their M2 acceptance is untested here.
+- SwiftUI pauses `TimelineView` updates while the presenter window is occluded, so the status-bar clock freezes if the window is fully covered; it resumes when visible. Harmless on stage.
+- The app is not sandboxed (see decisions). Hardened runtime is on.
+- `-selftest` always ends with `exit(0)`; it does not fail the build on bad numbers.
+
+**Ben device checklist (needs a second display, ideally the projector and clicker you use)**
+
+Build and run from the terminal: `xcodegen generate && xcodebuild -scheme Lectern-macOS -destination 'platform=macOS' -derivedDataPath build/DerivedData build | xcbeautify`, then `open build/DerivedData/Build/Products/Debug/Lectern.app`. No signing setup is needed for this (ad-hoc signed; macOS may ask once to confirm opening it).
+
+1. **Two displays.** Connect the external display (not mirrored). Open `Fixtures/overlays.pdf` (⌘O or drop it on the window). Press ⌥⌘P. Expected: a full-screen slide on the external display with no menu bar or Dock on it; the presenter window stays on the built-in display with the status bar reading LIVE. Press → five times: the external display must change on every press with no flash of black or white between pages, and the presenter's current slide and Next pane follow. Press ⇧← : the audience shows the last build of the previous frame.
+2. **Swap.** Press ⌥⌘D: the audience view moves to the built-in display and the presenter window to the external one. Press ⌥⌘D again to swap back. Quit and relaunch: the choice should be remembered for this display pair (Presentation ▸ Swap Displays if you need to undo it).
+3. **Unplug mid-talk.** While presenting, pull the display cable. Expected: the presenter keeps working (→ still advances), an orange banner says the audience display was disconnected. Plug it back in: the audience window should reappear full screen on it showing the current page, and the banner goes away. Note how long the return takes.
+4. **Mirroring warning.** In System Settings ▸ Displays, set the displays to mirror, then press ⌥⌘P: a banner must warn that the audience would see the presenter screen, with an "Open Displays Settings" button that opens that pane. Set them back to extended.
+5. **Clicker.** With your presentation remote: its next/previous (Page Down/Page Up) must advance and go back; its "black screen" key (B or `.`) must toggle a black audience display and the status bar must read BLACK in red; F5 must start presenting; Esc pressed twice within a second must end presenting (a single Esc shows "Press Esc again").
+6. **Keep-awake.** Present and leave the Mac untouched for longer than your display-sleep setting. The displays must stay on.
+7. **Timer.** Press → once: the elapsed timer starts by itself. T pauses/resumes, ⌥T resets. Presentation ▸ Target Duration ▸ 20 minutes: the status bar shows the remaining time, green while on pace.
+8. **Latency on the projector.** Run `build/DerivedData/Build/Products/Debug/Lectern.app/Contents/MacOS/Lectern -selftest "$PWD/Fixtures/basic-169.pdf"` with the projector attached: the self-test uses the real audience display, and the printed "first vsync" numbers then reflect the projector's fixed refresh rate. Paste the output into an issue. Separately, hold → down and watch the projector: pages should change at key-repeat rate without stutter.
+
+Please also report anything that looks wrong in the presenter layout; nothing in M1 has been seen on a real second display yet.

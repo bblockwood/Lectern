@@ -1,0 +1,79 @@
+# Lectern: XcodeGen spec for the real apps. Regenerate with `xcodegen generate` after editing this
+# file or adding/removing source files. The .xcodeproj is generated and gitignored (CLAUDE.md).
+name: Lectern
+options:
+  bundleIdPrefix: dev.lectern
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "26.0"
+    iOS: "26.0"
+    watchOS: "26.0"
+# Config/Signing.xcconfig sets ad-hoc defaults and optionally includes Ben's gitignored Local.xcconfig.
+configFiles:
+  Debug: Config/Signing.xcconfig
+  Release: Config/Signing.xcconfig
+packages:
+  PresenterCore:
+    path: Packages/PresenterCore
+  PresenterProtocol:
+    path: Packages/PresenterProtocol
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Lectern-macOS:
+    type: application
+    platform: macOS
+    sources:
+      - path: Apps/macOS
+        excludes: ["Tests/**"]
+    dependencies:
+      - package: PresenterCore
+      - package: PresenterProtocol
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lectern.mac
+        PRODUCT_NAME: Lectern
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: Apps/macOS/Info.plist
+      properties:
+        CFBundleDisplayName: Lectern
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        LSApplicationCategoryType: public.app-category.productivity
+        NSPrincipalClass: NSApplication
+        NSHumanReadableCopyright: ""
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: PDF document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.adobe.pdf]
+  Lectern-macOSTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Apps/macOS/Tests]
+    dependencies:
+      - target: Lectern-macOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lectern.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Lectern.app/Contents/MacOS/Lectern
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  Lectern-macOS:
+    build:
+      targets:
+        Lectern-macOS: all
+        Lectern-macOSTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [Lectern-macOSTests]

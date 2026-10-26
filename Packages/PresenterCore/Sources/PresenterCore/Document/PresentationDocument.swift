@@ -1,0 +1,96 @@
+import CoreGraphics
+import Foundation
+import PDFKit
+
+public enum DocumentError: Error, Equatable, Sendable {
+    /// CoreGraphics could not parse the file (malformed, truncated, encrypted with a password, not a PDF).
+    case cannotOpen(URL)
+    case noPages(URL)
+}
+
+/// Per-page facts needed for layout and rendering.
+public struct PageInfo: Hashable, Sendable {
+    public let index: Int
+    public let label: String?
+    /// Crop box size in PDF points after applying the page's /Rotate.
+    public let size: CGSize
+    public let rotation: Int
+
+    public var aspectRatio: CGFloat { size.height > 0 ? size.width / size.height : 1 }
+}
+
+/// An immutable handle to the parsed PDF for the render path. `CGPDFDocument` is not formally
+/// thread-safe, so `RenderCache` is the only reader after loading and it renders one page at a time.
+public final class PDFSource: @unchecked Sendable {
+    private let document: CGPDFDocument
+
+    init(document: CGPDFDocument) { self.document = document }
+
+    /// 0-based page access.
+    public func page(at index: Int) -> CGPDFPage? {
+        document.page(at: index + 1)
+    }
+
+    public var pageCount: Int { document.numberOfPages }
+}
+
+/// Everything PresenterCore knows about a loaded deck. Value type; the heavy parts are immutable references.
+public struct PresentationDocument: Sendable {
+    public let url: URL
+    public let pages: [PageInfo]
+    public let frames: FrameIndex
+    public let source: PDFSource
+    public let title: String?
+    /// True when the PDF defines a /PageLabels tree. Without one, labels are page numbers and every page is a frame.
+    public let hasPageLabels: Bool
+
+    public var pageCount: Int { pages.count }
+
+    /// Loads the PDF structure. Never throws for a merely odd PDF; throws `DocumentError` when CoreGraphics
+    /// cannot open it or it has no pages. Safe to call off the main thread.
+    public static func load(url: URL) throws -> PresentationDocument {
+        guard let cgDocument = CGPDFDocument(url as CFURL) else { throw DocumentError.cannotOpen(url) }
+        let count = cgDocument.numberOfPages
+        guard count > 0 else { throw DocumentError.noPages(url) }
+
+        let hasLabels = PresentationDocument.catalogHasPageLabels(cgDocument)
+        // PDFKit does the /PageLabels number-tree work; it falls back to page numbers when there is no tree.
+        let pdfKit = hasLabels ? PDFDocument(url: url) : nil
+
+        var pages: [PageInfo] = []
+        pages.reserveCapacity(count)
+        for i in 0..<count {
+            guard let page = cgDocument.page(at: i + 1) else { continue }
+            let box = page.getBoxRect(.cropBox)
+            let rotation = ((Int(page.rotationAngle) % 360) + 360) % 360
+            let size = rotation % 180 == 0 ? box.size : CGSize(width: box.height, height: box.width)
+            let label = pdfKit?.page(at: i)?.label
+            pages.append(PageInfo(index: i, label: label, size: size, rotation: rotation))
+        }
+        guard !pages.isEmpty else { throw DocumentError.noPages(url) }
+
+        var title: String?
+        if let info = cgDocument.info {
+            var titleString: CGPDFStringRef?
+            if CGPDFDictionaryGetString(info, "Title", &titleString), let titleString,
+               let s = CGPDFStringCopyTextString(titleString) as String?, !s.isEmpty {
+                title = s
+            }
+        }
+
+        return PresentationDocument(
+            url: url,
+            pages: pages,
+            frames: FrameIndex(labels: pages.map(\.label)),
+            source: PDFSource(document: cgDocument),
+            title: title,
+            hasPageLabels: hasLabels
+        )
+    }
+
+    private static func catalogHasPageLabels(_ document: CGPDFDocument) -> Bool {
+        guard let catalog = document.catalog else { return false }
+        var labels: CGPDFDictionaryRef?
+        return CGPDFDictionaryGetDictionary(catalog, "PageLabels", &labels)
+    }
+}
