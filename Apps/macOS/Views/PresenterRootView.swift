@@ -10,12 +10,30 @@ struct PresenterRootView: View {
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
                 if let presentation = model.presentation {
-                    PresenterLayout(presentation: presentation)
-                        .id(ObjectIdentifier(presentation))
+                    if model.overviewVisible {
+                        OverviewLayout(model: model, presentation: presentation)
+                            .id(ObjectIdentifier(presentation))
+                    } else {
+                        PresenterLayout(presentation: presentation)
+                            .id(ObjectIdentifier(presentation))
+                    }
                 } else {
                     WelcomeView(model: model)
                 }
                 BannerStack(model: model)
+                if !model.jumpBuffer.isEmpty {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Text("Go to frame \(Text(model.jumpBuffer).bold()) ⏎")
+                            Spacer()
+                        }
+                        .font(.title2)
+                        .padding(10)
+                        .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
+                        .padding(16)
+                    }
+                }
             }
             StatusBar(model: model)
         }
@@ -83,14 +101,8 @@ struct PresenterLayout: View {
     var body: some View {
         GeometryReader { geo in
             HStack(spacing: 0) {
-                ZStack(alignment: .top) {
-                    SurfaceHost(view: presentation.currentSurface.view)
-                    if presentation.state.isBrowsing {
-                        Text("PREVIEW: audience sees Frame \(presentation.document.frames.frame(containing: presentation.state.committedPage).label)")
-                            .font(.headline).padding(8).background(.orange, in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(.black).padding(8)
-                    }
-                }
-                .frame(width: max(200, geo.size.width * horizontalFraction))
+                CurrentSlidePane(presentation: presentation)
+                    .frame(width: max(200, geo.size.width * horizontalFraction))
                 SplitHandle(axis: .horizontal) { delta in
                     horizontalFraction = min(0.85, max(0.3, horizontalFraction + delta / geo.size.width))
                 }
@@ -111,6 +123,30 @@ struct PresenterLayout: View {
             }
         }
         .padding(8)
+    }
+}
+
+/// The presenter's current slide with the PREVIEW banner while browsing and the APPENDIX badge (SPEC §4.2, §6.3).
+struct CurrentSlidePane: View {
+    let presentation: Presentation
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            SurfaceHost(view: presentation.currentSurface.view)
+            HStack(alignment: .top) {
+                if presentation.state.isBrowsing {
+                    Text("PREVIEW: audience sees Frame \(presentation.committedFrame.label)")
+                        .font(.headline).padding(8).background(.orange, in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(.black)
+                }
+                Spacer()
+                if presentation.isInAppendix {
+                    Text("APPENDIX")
+                        .font(.caption.weight(.heavy)).padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(.purple, in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(.white)
+                }
+            }
+            .padding(8)
+        }
     }
 }
 
@@ -212,6 +248,11 @@ struct StatusBar: View {
                     if frame.buildCount > 1 {
                         Text("Build \(presentation.currentBuild + 1)/\(frame.buildCount)").foregroundStyle(.secondary)
                     }
+                    if presentation.isInAppendix {
+                        Text("APPENDIX").font(.caption.weight(.heavy)).foregroundStyle(.purple)
+                    } else if let left = presentation.mainTalkFramesLeft {
+                        Text("\(left) left").foregroundStyle(.secondary)
+                    }
                     Spacer()
                     timerSection(presentation: presentation, now: context.date)
                     Spacer()
@@ -239,7 +280,7 @@ struct StatusBar: View {
                 .foregroundStyle(timer.isRunning ? .primary : .secondary)
             Text(now, format: .dateTime.hour().minute()).monospacedDigit().foregroundStyle(.secondary)
             if let target = timer.target, let remaining = timer.remaining(at: now) {
-                let pace = PaceIndicator.pace(framesDone: presentation.currentFrame.index, framesTotal: presentation.frameCount,
+                let pace = PaceIndicator.pace(framesDone: presentation.committedFrame.index, framesTotal: presentation.document.mainTalkFrameCount,
                                               elapsed: elapsed, target: target)
                 Text((remaining < 0 ? "−" : "") + format(abs(remaining)) + " left")
                     .monospacedDigit()

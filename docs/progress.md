@@ -134,3 +134,36 @@ Started 2026-10-25.
 1. **PresenterCore**: `Outline` from PDFKit with the §4.2 appendix heuristic; `PDFPCMetadata` from the XMP packet (`pdfpc:Duration`, `pdfpc:EndUserSlide`, …) so `endOfTalkPage` resolves pdfpc → (sidecar, M3) → outline; `PageLink` extraction per page via PDFKit (GoTo, named actions, URI, launch) with rects normalised to the rotated page; `TextSearcher` actor over PDFKit's text layer with hits grouped by frame; reducer handles `followLink` (GoTo pushes history, named actions map to steps/jumps/back/forward) and keeps a forward stack for `GoForward`. Tests on fixtures 4 and 6.
 2. **App**: overview (Tab) with a frame grid of last-page thumbnails from a separate small `RenderCache`, outline sidebar and search field; arrows/clicks browse privately with the PREVIEW banner, Return commits, Esc cancels; jump by number (digits + Return) from anywhere; link activation by click on the presenter's current slide and on the audience window with a hand cursor; APPENDIX badge and remaining main-talk frames in the status bar; URI links ignored unless a defaults flag enables opening them after confirmation.
 3. **Acceptance**: unit test of the fixture 6 round trip (link → appendix, Delete → back) at the reducer level, and a self-test scenario that clicks the link rect on the presenter surface and presses Delete.
+
+### M2 report (2026-10-25)
+
+**Done**
+
+- PresenterCore: `Outline` (PDFKit bookmarks, flattened with depths, `appendixEntry()` for Appendix/Backup/Supplementary), `PDFPCMetadata` from the XMP packet (`pdfpc:Duration`, `EndUserSlide`, `LastMinutes`, `NotesPosition`, `DisableMarkdown`, `DefaultTransition`), `EndOfTalk.resolve` with the §4.2 order (pdfpc → sidecar → outline), `PageLink` extraction per page (GoTo to pages or resolved named destinations, named actions, URI, launch) with rects normalised to the rotated page, `TextSearcher` actor (case- and diacritic-insensitive, snippets, hits carry their frame), reducer support for `followLink` (GoTo pushes history, NextPage/PrevPage step, FirstPage/LastPage jump, GoBack/GoForward walk the history with a new `forwardHistory` stack that any fresh jump clears). The target duration from pdfpc metadata seeds the timer. 65 core tests.
+- App: overview on Tab (current slide stays on the left with the PREVIEW banner; outline sidebar, search field with debounced results and ↑/↓/Return navigation, frame grid of last-page thumbnails from a separate 96 MB `RenderCache`, committed frame outlined green, browsed frame blue, appendix frames marked A); clicks and arrows browse privately, Return or double-click commits, Esc cancels and closes, Tab closes; jump by number from anywhere (digits overlay, Return jumps to that frame label, Esc clears, unknown label shows a banner); link activation by click on the presenter's current slide and on the audience window with a hand cursor over links; APPENDIX badge on the current slide and in the status bar, "N left" main-talk frames, pace indicator over main-talk frames; URI links ignored with a short notice unless `LecternOpenURILinks` is set, then opened after confirmation; `-roundtrip` and `-overview` self-test scenarios. 12 app tests.
+
+**Acceptance: appendix round trip on fixture 6.** Reducer level: `LinkFollowing.appendixRoundTripIsOneActionEachWay` (page 2 → `\hyperlink{backup-proof}` → page 8, Delete → page 2). App level through the real event path: `Lectern -selftest Fixtures/links-appendix.pdf 2 -roundtrip` posts a mouse click at the link's rect on the presenter's current slide and then a Delete key:
+
+```
+ROUNDTRIP OK: page 2 → click link → page 8 → Delete → page 2; history [1, 0], forward [7]
+```
+
+One click there, one keypress back. The same click works on the audience window because the surface view accepts first-mouse clicks without becoming key.
+
+**Verified in addition**: overview screenshot from the self-test (`-overview -screenshot DIR`) shows outline, thumbnails with labels, build counts and A markers, PREVIEW banner and "1 left"; named actions from beamer's navigation bar (GoBack, GoForward, GoToPage, Find) are extracted and the ones with meaning map to commands; pdfpc XMP on fixture 4 yields duration 30 min and end slide 5, which beats the outline's Appendix entry.
+
+**Known issues**
+
+- Browsing to a frame from the overview selects its first page (unbuilt) while the thumbnail shows its last page. Committing therefore starts the frame from build 1, which is what a presenter wants, but the current-slide preview and the thumbnail differ for frames with builds.
+- Search results are limited to 300 hits and the search field's ↑/↓/Esc handling uses SwiftUI `onKeyPress`, which could not be exercised headlessly; the grid and keyboard paths were.
+- Frame grid cells are a fixed 200 pt wide; wide windows leave empty space on the right.
+- Second-screen-notes decks still group frames by (wrong) page labels; the overview shows that grouping. M3.
+- No "Find" or "GoToPage" named-action behaviour (they are viewer UI actions in Acrobat); they are ignored.
+
+**Ben device checklist (additions for M2; no new hardware needed)**
+
+1. Open `Fixtures/links-appendix.pdf`, press → once, click "backup proof" on the slide (the hand cursor appears over it): the audience jumps to the proof with the APPENDIX badge on the presenter; press Delete: back to the Introduction. Try the same click on the projector window.
+2. Press Tab: the overview opens. Use ←/→/↑/↓ to move the blue selection; the current-slide pane shows the selection with the orange PREVIEW banner while the projector stays put; Return commits (projector changes, overview closes); Tab then Esc cancels without touching the projector.
+3. Type `6` then Return from the normal view: jump to frame 6. Type `99` Return: a banner says there is no such frame.
+4. Tab, ⌘F, type `backup`: results listed by frame; ↓ walks them (preview follows), Return commits.
+5. B, W, F during a talk: audience goes black / white / stays frozen while you move on; the status bar shows BLACK, WHITE, FROZEN; pressing the same key again returns to LIVE.

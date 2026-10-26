@@ -14,6 +14,9 @@ final class Presentation {
     @ObservationIgnored let audienceSurface: SurfaceController
     @ObservationIgnored let currentSurface: SurfaceController
     @ObservationIgnored let previewSurface: SurfaceController
+    /// Separate low-res, memory-bounded cache for the overview (SPEC §3.3).
+    @ObservationIgnored let thumbnails: ThumbnailProvider
+    @ObservationIgnored let searcher: TextSearcher
     @ObservationIgnored private var planTask: Task<Void, Never>?
 
     /// Mirror of the controller's state for SwiftUI observation.
@@ -26,6 +29,8 @@ final class Presentation {
         let budgetMB = CommandLine.arguments.first(where: { $0.hasPrefix("-cacheMB=") }).flatMap { Int($0.dropFirst(9)) } ?? 768
         cache = RenderCache(document: document, budgetBytes: budgetMB << 20)
         state = controller.state
+        thumbnails = ThumbnailProvider(document: document)
+        searcher = TextSearcher(url: document.url, frames: document.frames)
         audienceSurface = SurfaceController(role: .audience, document: document, cache: cache)
         currentSurface = SurfaceController(role: .presenterCurrent, document: document, cache: cache)
         previewSurface = SurfaceController(role: .preview, document: document, cache: cache)
@@ -62,6 +67,13 @@ final class Presentation {
     var currentFrame: Frame { document.frames.frame(containing: state.presenterPage) }
     var currentBuild: Int { document.frames.buildIndex(of: state.presenterPage) }
     var frameCount: Int { document.frames.frameCount }
+    var committedFrame: Frame { document.frames.frame(containing: state.committedPage) }
+    var isInAppendix: Bool { document.isAppendix(page: state.presenterPage) }
+    /// Main-talk frames still to come after the presenter's current frame, nil when the end is unknown.
+    var mainTalkFramesLeft: Int? {
+        guard document.endOfTalkPage != nil else { return nil }
+        return max(0, document.mainTalkFrameCount - (currentFrame.index + 1))
+    }
     var nextPage: Int? {
         let next = state.presenterPage + 1
         return next < document.pageCount ? next : nil
