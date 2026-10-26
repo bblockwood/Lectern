@@ -191,3 +191,37 @@ private func run(_ commands: [Command], from state: SessionState = SessionState(
         #expect(SessionController.restoredPage(label: "3", build: 2, oldPage: 6, in: shorter) == 1)
     }
 }
+
+@Suite struct PreviousLandingOnFrameStart {
+    private let options = NavigationOptions(previousLandsOnFrameStart: true)
+
+    private func run(_ commands: [Command], from page: Int) -> Int {
+        var s = SessionState()
+        s.committedPage = page
+        for c in commands { reducer.apply(c, to: &s, now: t0, options: options) }
+        return s.committedPage
+    }
+
+    @Test func insideAFrameItStillStepsOneBuild() {
+        #expect(run([.previous], from: 3) == 2)
+        #expect(run([.previous], from: 5) == 4)
+    }
+
+    @Test func atTheStartOfAFrameItLandsOnThePreviousFramesFirstBuild() {
+        #expect(run([.previous], from: 4) == 1)   // frame 3 → frame 2's first build, not its last (page 3)
+        #expect(run([.previous], from: 6) == 4)
+        #expect(run([.previous], from: 1) == 0)
+        #expect(run([.previous], from: 0) == 0)
+    }
+
+    @Test func shiftLeftStillLandsOnTheLastBuild() {
+        #expect(run([.previousFrame], from: 4) == 3)
+    }
+
+    @Test func theDefaultKeepsTheSpecBehaviour() {
+        var s = SessionState()
+        s.committedPage = 4
+        reducer.apply(.previous, to: &s, now: t0)
+        #expect(s.committedPage == 3)
+    }
+}
