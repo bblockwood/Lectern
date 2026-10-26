@@ -33,6 +33,16 @@ public final class SessionController {
         commit(old: state, new: new)
     }
 
+    /// Drops ephemeral strokes older than `maxAge` (SPEC §8). Returns true when something was removed.
+    @discardableResult
+    public func pruneEphemeralInk(now: Date, maxAge: TimeInterval) -> Bool {
+        var new = state
+        new.ink.strokes.removeAll { $0.mode == .ephemeral && now.timeIntervalSince($0.startedAt) > maxAge }
+        guard new != state else { return false }
+        commit(old: state, new: new)
+        return true
+    }
+
     public func setDisplayConfig(_ config: DisplayConfig) {
         var new = state
         new.displayConfig = config

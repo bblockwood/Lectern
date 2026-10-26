@@ -17,6 +17,20 @@ final class SlideSurfaceView: NSView {
     }
     var onLinkActivate: ((LinkID) -> Void)?
 
+    // Pointer and ink (SPEC §6.4, §8). Coordinates are normalised to the displayed slide image.
+    var pointerTrackingEnabled = false
+    var inkTrackingEnabled = false
+    var onPointerMove: ((NormalizedPoint) -> Void)?
+    var onPointerExit: (() -> Void)?
+    var onInkBegin: ((NormalizedPoint) -> Void)?
+    var onInkAppend: ((NormalizedPoint) -> Void)?
+    var onInkEnd: (() -> Void)?
+
+    private let pointerLayer = CALayer()
+    private let inkLayer = CALayer()
+    private var strokeLayers: [CAShapeLayer] = []
+    private var isInking = false
+
     var surroundColor: CGColor = CGColor(gray: 0, alpha: 1) {
         didSet { layer?.backgroundColor = surroundColor }
     }
@@ -38,6 +52,17 @@ final class SlideSurfaceView: NSView {
         slideLayer.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull(),
                               "backgroundColor": NSNull(), "hidden": NSNull(), "contentsScale": NSNull()]
         layer?.addSublayer(slideLayer)
+
+        inkLayer.actions = ["bounds": NSNull(), "position": NSNull(), "sublayers": NSNull()]
+        slideLayer.addSublayer(inkLayer)
+
+        pointerLayer.isHidden = true
+        pointerLayer.backgroundColor = CGColor(red: 1, green: 0.1, blue: 0.1, alpha: 1)
+        pointerLayer.shadowColor = CGColor(red: 1, green: 0.2, blue: 0.2, alpha: 1)
+        pointerLayer.shadowOpacity = 0.9
+        pointerLayer.shadowOffset = .zero
+        pointerLayer.actions = ["position": NSNull(), "hidden": NSNull(), "bounds": NSNull(), "cornerRadius": NSNull()]
+        slideLayer.addSublayer(pointerLayer)
     }
 
     @available(*, unavailable)
@@ -76,19 +101,110 @@ final class SlideSurfaceView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if link(at: point) != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+        if inkTrackingEnabled {
+            NSCursor.crosshair.set()
+        } else if link(at: point) != nil {
+            NSCursor.pointingHand.set()
+        } else {
+            NSCursor.arrow.set()
+        }
+        if pointerTrackingEnabled {
+            if let normalized = normalizedPoint(for: point) { onPointerMove?(normalized) } else { onPointerExit?() }
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
         NSCursor.arrow.set()
+        if pointerTrackingEnabled { onPointerExit?() }
     }
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        if inkTrackingEnabled, let normalized = normalizedPoint(for: point) {
+            isInking = true
+            onInkBegin?(normalized)
+            return
+        }
         if let link = link(at: point) {
             onLinkActivate?(link.id)
         } else {
             super.mouseDown(with: event)
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isInking else { return super.mouseDragged(with: event) }
+        let point = convert(event.locationInWindow, from: nil)
+        if let normalized = normalizedPoint(for: point) { onInkAppend?(normalized) }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard isInking else { return super.mouseUp(with: event) }
+        isInking = false
+        onInkEnd?()
+    }
+
+    // MARK: - Pointer and ink rendering
+
+    /// Shows the pointer at a normalised position (nil hides it). A fading copy is left behind as the trail.
+    func showPointer(at position: NormalizedPoint?) {
+        guard let position else {
+            pointerLayer.isHidden = true
+            return
+        }
+        let frame = slideLayer.bounds
+        let diameter = max(4, frame.height * 0.012)
+        let center = CGPoint(x: frame.minX + position.x * frame.width, y: frame.minY + (1 - position.y) * frame.height)
+        if !pointerLayer.isHidden, pointerLayer.position != center {
+            let trail = CALayer()
+            trail.bounds = pointerLayer.bounds
+            trail.cornerRadius = pointerLayer.cornerRadius
+            trail.position = pointerLayer.position
+            trail.backgroundColor = pointerLayer.backgroundColor
+            trail.opacity = 0.6
+            slideLayer.insertSublayer(trail, below: pointerLayer)
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0.6
+            fade.toValue = 0
+            fade.duration = 0.3
+            fade.isRemovedOnCompletion = false
+            fade.fillMode = .forwards
+            trail.add(fade, forKey: "fade")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { trail.removeFromSuperlayer() }
+        }
+        pointerLayer.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+        pointerLayer.cornerRadius = diameter / 2
+        pointerLayer.shadowRadius = diameter * 0.6
+        pointerLayer.position = center
+        pointerLayer.isHidden = false
+    }
+
+    var inkStrokeCount: Int { strokeLayers.count }
+
+    /// Redraws strokes as vectors in slide coordinates; `opacity(for:)` lets ephemeral strokes fade.
+    func showInk(_ strokes: [InkStroke], opacity: (InkStroke) -> Float) {
+        for layer in strokeLayers { layer.removeFromSuperlayer() }
+        strokeLayers.removeAll()
+        let frame = slideLayer.bounds
+        inkLayer.frame = frame
+        guard frame.width > 0, frame.height > 0 else { return }
+        for stroke in strokes where stroke.points.count >= 1 {
+            let path = CGMutablePath()
+            let points = stroke.points.map { CGPoint(x: $0.x * frame.width, y: (1 - $0.y) * frame.height) }
+            path.move(to: points[0])
+            if points.count == 1 { path.addLine(to: points[0]) }
+            for point in points.dropFirst() { path.addLine(to: point) }
+            let shape = CAShapeLayer()
+            shape.path = path
+            shape.strokeColor = CGColor(red: stroke.color.red, green: stroke.color.green, blue: stroke.color.blue, alpha: stroke.color.alpha)
+            shape.fillColor = nil
+            shape.lineWidth = max(1, stroke.width * frame.height)
+            shape.lineCap = .round
+            shape.lineJoin = .round
+            shape.opacity = opacity(stroke)
+            shape.actions = ["opacity": NSNull(), "path": NSNull()]
+            inkLayer.addSublayer(shape)
+            strokeLayers.append(shape)
         }
     }
 
@@ -169,6 +285,7 @@ final class SlideSurfaceView: NSView {
         if fitted.height > size.height { fitted = CGSize(width: size.height * aspect, height: size.height) }
         slideLayer.frame = CGRect(x: ((size.width - fitted.width) / 2).rounded(), y: ((size.height - fitted.height) / 2).rounded(),
                                   width: fitted.width.rounded(), height: fitted.height.rounded())
+        inkLayer.frame = slideLayer.bounds
     }
 
     // MARK: - Frame callback (latency measurement)

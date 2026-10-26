@@ -56,8 +56,94 @@ final class SelfTest {
         await press(keyCode: 124, character: "\u{F703}", shift: true)
         await press(keyCode: 123, character: "\u{F702}", shift: true)
         if CommandLine.arguments.contains("-roundtrip") { await roundTrip(presentation: presentation) }
+        if CommandLine.arguments.contains("-notes") { notesCheck(presentation: presentation) }
+        if CommandLine.arguments.contains("-ink") { await inkCheck(presentation: presentation) }
+        if CommandLine.arguments.contains("-reload") { await reloadCheck() }
         report(presentation: presentation)
         exit(0)
+    }
+
+    /// Prints the merged note for every page so fixtures 3, 4 and 5 can be eyeballed from the terminal.
+    private func notesCheck(presentation: Presentation) {
+        print("NOTES split=\(presentation.notesSplit) pending=\(presentation.pendingSplitQuestion.map { "\($0)" } ?? "none") warnings=\(presentation.notes.warnings)")
+        for page in 0..<presentation.document.pageCount {
+            let note = presentation.notes.table.note(for: page, frames: presentation.document.frames)
+            print("  p\(page + 1): \(note.map { "[\($0.source.rawValue)] " + $0.text.replacingOccurrences(of: "\n", with: "⏎") } ?? "–")")
+        }
+    }
+
+    /// Pointer and ephemeral ink through the surface view's mouse handlers, then screenshots.
+    private func inkCheck(presentation: Presentation) async {
+        guard let model = (NSApp.delegate as? AppDelegate)?.model else { return }
+        let view = presentation.currentSurface.view
+        guard let window = view.window else { print("INK FAIL: no window"); return }
+        func event(_ type: NSEvent.EventType, _ normalized: (Double, Double)) -> NSEvent {
+            let slide = view.slideFrame
+            let point = NSPoint(x: slide.minX + slide.width * normalized.0, y: slide.minY + slide.height * (1 - normalized.1))
+            return NSEvent.mouseEvent(with: type, location: view.convert(point, to: nil), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                      windowNumber: window.windowNumber, context: nil, eventNumber: 7, clickCount: 1, pressure: 1)!
+        }
+        _ = model.perform(.togglePointer)
+        view.mouseMoved(with: event(.mouseMoved, (0.3, 0.4)))
+        view.mouseMoved(with: event(.mouseMoved, (0.32, 0.42)))
+        let pointerShown = presentation.state.pointer != nil && presentation.pointerMode
+        _ = model.perform(.toggleDraw)
+        view.mouseDown(with: event(.leftMouseDown, (0.2, 0.7)))
+        for i in 1...20 { view.mouseDragged(with: event(.leftMouseDragged, (0.2 + Double(i) * 0.03, 0.7 + 0.1 * sin(Double(i) / 3)))) }
+        view.mouseUp(with: event(.leftMouseUp, (0.8, 0.7)))
+        let strokes = presentation.state.ink.strokes
+        let audienceHasInk = presentation.audienceSurface.view.inkStrokeCount
+        print("INK \(pointerShown && strokes.count == 1 && strokes[0].points.count == 21 && audienceHasInk == 1 ? "OK" : "FAIL"): pointer shown \(pointerShown), strokes \(strokes.count) with \(strokes.first?.points.count ?? 0) points, audience ink layers \(audienceHasInk), draw mode \(presentation.drawMode)")
+        captureScreenshots(suffix: "-ink")
+        try? await Task.sleep(for: .seconds(3.5))
+        print("INK fade: strokes after 3.5 s = \(presentation.state.ink.strokes.count) (expected 0)")
+        _ = model.perform(.toggleDraw)
+    }
+
+    /// M3 acceptance: a deck recompiled mid-talk keeps the position by (frame label, build).
+    private func reloadCheck() async {
+        guard let model = (NSApp.delegate as? AppDelegate)?.model else { return }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("lectern-reload-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let deck = dir.appendingPathComponent("deck.pdf")
+        let fixtures = url.deletingLastPathComponent()
+        do { try FileManager.default.copyItem(at: fixtures.appendingPathComponent("overlays.pdf"), to: deck) } catch { print("RELOAD FAIL: \(error)"); return }
+        model.open(url: deck)
+        guard let presentation = model.presentation else { print("RELOAD FAIL: could not open copy"); return }
+        try? await Task.sleep(for: .seconds(1))
+        _ = model.perform(.command(.goToPage(5)))    // frame "3", build 2 of overlays.pdf
+        let before = (presentation.document.frames.frame(containing: 5).label, presentation.document.frames.buildIndex(of: 5))
+        func replace(with name: String) async -> Bool {
+            let outcomesBefore = presentation.reloadOutcomes
+            let temp = dir.appendingPathComponent("deck.pdf.tmp")
+            try? FileManager.default.removeItem(at: temp)
+            do {
+                try FileManager.default.copyItem(at: fixtures.appendingPathComponent(name), to: temp)
+                _ = try FileManager.default.replaceItemAt(deck, withItemAt: temp)
+            } catch { print("RELOAD FAIL: replace \(error)"); return false }
+            let deadline = Date().addingTimeInterval(6)
+            while Date() < deadline {
+                try? await Task.sleep(for: .milliseconds(100))
+                if presentation.reloadOutcomes > outcomesBefore { return true }
+            }
+            return false
+        }
+        // 1. A recompiled deck with different pagination but the same labels: links-appendix frame "3" has 3 builds.
+        let step1 = await replace(with: "links-appendix.pdf")
+        let after1 = presentation.state.committedPage
+        let restored1 = presentation.document.pageCount == 11 && presentation.document.frames.frame(containing: after1).label == before.0
+            && presentation.document.frames.buildIndex(of: after1) == before.1
+        print("RELOAD step 1 \(step1 && restored1 ? "OK" : "FAIL"): was frame \(before.0) build \(before.1 + 1); now page \(after1 + 1) of \(presentation.document.pageCount) (frame \(presentation.document.frames.frame(containing: after1).label) build \(presentation.document.frames.buildIndex(of: after1) + 1)); notice: \(presentation.reloadNotice ?? "none")")
+        // 2. A broken PDF must be ignored and the old deck kept.
+        let pagesBefore2 = presentation.document.pageCount
+        let step2 = await replace(with: "malformed.pdf")
+        let kept = presentation.document.pageCount == pagesBefore2 && presentation.reloadFailed && presentation.state.committedPage == after1
+        print("RELOAD step 2 \(step2 && kept ? "OK" : "FAIL"): malformed replacement ignored, still \(presentation.document.pageCount) pages at page \(presentation.state.committedPage + 1); notice: \(presentation.reloadNotice ?? "none")")
+        // 3. The next good compile is picked up again.
+        let step3 = await replace(with: "overlays.pdf")
+        let ok3 = presentation.document.pageCount == 23 && !presentation.reloadFailed
+        print("RELOAD step 3 \(step3 && ok3 ? "OK" : "FAIL"): back to \(presentation.document.pageCount) pages at page \(presentation.state.committedPage + 1)")
+        try? FileManager.default.removeItem(at: dir)
     }
 
     /// M2 acceptance: click a link into the appendix on the presenter's current slide, press Delete to return.

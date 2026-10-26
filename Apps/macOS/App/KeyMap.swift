@@ -41,6 +41,9 @@ enum KeyMap {
             switch key {
             case "[": return .command(.back)
             case "f": return .focusSearch
+            case "=", "+": return .notesFontLarger
+            case "-": return .notesFontSmaller
+            case "e": return .editNotes
             default: return nil   // other ⌘ shortcuts belong to the menu
             }
         }
@@ -52,6 +55,9 @@ enum KeyMap {
         case "w": return .toggleAudience(.white)
         case "f": return .toggleFreeze
         case "t": return option ? .resetTimer : .toggleTimer
+        case "l": return .togglePointer
+        case "d": return .toggleDraw
+        case "e": return .command(.clearInk)
         default: return nil
         }
     }

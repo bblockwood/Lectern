@@ -27,6 +27,11 @@ enum AppAction: Equatable {
     case focusSearch
     /// A link clicked on a slide surface.
     case followLink(LinkID)
+    case togglePointer
+    case toggleDraw
+    case notesFontLarger
+    case notesFontSmaller
+    case editNotes
 }
 
 struct Banner: Identifiable, Equatable {
@@ -54,6 +59,14 @@ final class AppModel {
     private(set) var searchFocusRequest = 0
     /// Columns of the overview grid, reported by the view, for ↑/↓ moves.
     var overviewColumns = 4
+    /// Inline notes editor open (SPEC §5.2).
+    private(set) var notesEditing = false
+    /// Notes font size in points, persisted per device (SPEC §5.2).
+    var notesFontSize: Double {
+        get { UserDefaults.standard.object(forKey: "notesFontSize") as? Double ?? 18 }
+        set { UserDefaults.standard.set(min(48, max(10, newValue)), forKey: "notesFontSize"); notesFontTick += 1 }
+    }
+    private(set) var notesFontTick = 0
     let recents = RecentsStore()
     let displays = DisplayManager()
 
@@ -84,10 +97,12 @@ final class AppModel {
             jumpBuffer = ""
             let presentation = Presentation(document: document, surroundColor: surroundColor)
             self.presentation = presentation
+            notesEditing = false
             for surface in [presentation.audienceSurface, presentation.currentSurface] {
                 surface.view.onLinkActivate = { [weak self] id in _ = self?.perform(.followLink(id)) }
             }
-            if let target = document.pdfpc?.targetDuration { presentation.controller.setTimerTarget(target); presentation.refreshState() }
+            presentation.onNotice = { [weak self] banner in self?.show(banner, autoDismissAfter: banner.kind == .info ? 4 : nil) }
+            for warning in presentation.notes.warnings { show(Banner(kind: .warning, text: warning)) }
             recents.add(url)
             dismissBanners(kind: .error)
             log.notice("opened \(url.lastPathComponent, privacy: .public): \(document.pageCount) pages, \(document.frames.frameCount) frames")
@@ -181,6 +196,16 @@ final class AppModel {
             searchFocusRequest += 1
         case .followLink(let id):
             follow(link: id, in: presentation)
+        case .togglePointer:
+            presentation.togglePointerMode()
+        case .toggleDraw:
+            presentation.toggleDrawMode()
+        case .notesFontLarger:
+            notesFontSize += 2
+        case .notesFontSmaller:
+            notesFontSize -= 2
+        case .editNotes:
+            notesEditing.toggle()
         case .toggleAudience(let mode):
             presentation.apply(.setAudienceMode(presentation.state.audienceMode == mode ? .live : mode))
         case .toggleFreeze:
@@ -293,8 +318,11 @@ final class AppModel {
     }
 
     func setTargetDuration(_ target: TimeInterval?) {
-        presentation?.controller.setTimerTarget(target)
-        presentation?.refreshState()
+        presentation?.setTargetDuration(target)
+    }
+
+    func setNotesEditing(_ editing: Bool) {
+        notesEditing = editing
     }
 
     func askForTargetDuration() {

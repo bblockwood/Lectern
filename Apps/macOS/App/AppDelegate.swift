@@ -72,6 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func toggleWhite(_ sender: Any?) { _ = model.perform(.toggleAudience(.white)) }
     @objc func toggleFreeze(_ sender: Any?) { _ = model.perform(.toggleFreeze) }
     @objc func toggleTimer(_ sender: Any?) { _ = model.perform(.toggleTimer) }
+    @objc func togglePointer(_ sender: Any?) { _ = model.perform(.togglePointer) }
+    @objc func toggleDraw(_ sender: Any?) { _ = model.perform(.toggleDraw) }
+    @objc func clearInk(_ sender: Any?) { _ = model.perform(.command(.clearInk)) }
+    @objc func editNotes(_ sender: Any?) { _ = model.perform(.editNotes) }
+    @objc func notesLarger(_ sender: Any?) { _ = model.perform(.notesFontLarger) }
+    @objc func notesSmaller(_ sender: Any?) { _ = model.perform(.notesFontSmaller) }
+    @objc func reloadDeck(_ sender: Any?) { model.presentation?.reloadDocument() }
     @objc func resetTimer(_ sender: Any?) { _ = model.perform(.resetTimer) }
     @objc func openDisplaySettings(_ sender: Any?) { DisplayManager.openDisplaySettings() }
 
@@ -118,9 +125,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case #selector(toggleRehearsalAudienceWindow(_:)):
             item.state = model.rehearsalAudienceWindowVisible ? .on : .off
             return model.isPresenting && model.displays.assignment.audience == nil
+        case #selector(togglePointer(_:)):
+            item.state = model.presentation?.pointerMode == true ? .on : .off
+            return model.presentation != nil
+        case #selector(toggleDraw(_:)):
+            item.state = model.presentation?.drawMode == true ? .on : .off
+            return model.presentation != nil
+        case #selector(editNotes(_:)):
+            item.state = model.notesEditing ? .on : .off
+            return model.presentation != nil
         case #selector(closeDocument(_:)), #selector(nextBuild(_:)), #selector(previousBuild(_:)), #selector(nextFrame(_:)),
              #selector(previousFrame(_:)), #selector(goBack(_:)), #selector(toggleBlack(_:)), #selector(toggleWhite(_:)),
-             #selector(toggleFreeze(_:)), #selector(toggleTimer(_:)), #selector(resetTimer(_:)):
+             #selector(toggleFreeze(_:)), #selector(toggleTimer(_:)), #selector(resetTimer(_:)), #selector(clearInk(_:)),
+             #selector(notesLarger(_:)), #selector(notesSmaller(_:)), #selector(reloadDeck(_:)):
             return model.presentation != nil
         case #selector(setTargetDuration(_:)):
             if let minutes = item.representedObject as? Int {

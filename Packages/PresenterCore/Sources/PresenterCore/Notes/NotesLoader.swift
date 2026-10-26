@@ -7,12 +7,16 @@ public struct NotesBundle: Sendable {
     public var table: NotesTable
     public var pdfpcFile: PDFPCFile?
     public var pptx: PPTXNotes?
+    /// Notes from PDF annotations, kept so the table can be re-assembled when user notes change.
+    public var embedded: [Int: String]
     /// Second-screen layout guess (from pdfpc's hint or the aspect ratio), before the user confirms.
     public var detectedSplit: NotesSplit?
     public var warnings: [String]
 
-    public init(table: NotesTable = .empty, pdfpcFile: PDFPCFile? = nil, pptx: PPTXNotes? = nil, detectedSplit: NotesSplit? = nil, warnings: [String] = []) {
-        self.table = table; self.pdfpcFile = pdfpcFile; self.pptx = pptx; self.detectedSplit = detectedSplit; self.warnings = warnings
+    public init(table: NotesTable = .empty, pdfpcFile: PDFPCFile? = nil, pptx: PPTXNotes? = nil, embedded: [Int: String] = [:],
+                detectedSplit: NotesSplit? = nil, warnings: [String] = []) {
+        self.table = table; self.pdfpcFile = pdfpcFile; self.pptx = pptx; self.embedded = embedded
+        self.detectedSplit = detectedSplit; self.warnings = warnings
     }
 }
 
@@ -35,7 +39,7 @@ public enum NotesLoader {
         }
         let hint = pdfpcFile?.beamerNotePosition ?? document.pdfpc?.notesPosition
         let split = document.pages.first.flatMap { SecondScreenDetector.detect(pageSize: $0.size, hint: hint) }
-        return NotesBundle(table: NotesMerger.merge(layers), pdfpcFile: pdfpcFile, pptx: pptx, detectedSplit: split, warnings: warnings)
+        return NotesBundle(table: NotesMerger.merge(layers), pdfpcFile: pdfpcFile, pptx: pptx, embedded: embedded, detectedSplit: split, warnings: warnings)
     }
 
     /// Reads the companion files beside the deck and the embedded annotations. Safe off the main thread.
