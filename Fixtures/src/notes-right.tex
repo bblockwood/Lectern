@@ -1,0 +1,38 @@
+% Fixture 3: Beamer second-screen notes (right). Each PDF page holds the slide plus a notes panel.
+\documentclass[aspectratio=169]{beamer}
+\usetheme{default}
+\usepackage{pgfpages}
+\setbeameroption{show notes on second screen=right}
+\title{Second-screen notes (right)}
+\subtitle{Fixture 3}
+\author{Lectern fixtures}
+\date{}
+\begin{document}
+\begin{frame}
+  \titlepage
+  \note{Notes for the title page. Say hello.}
+\end{frame}
+\section{Main}
+\begin{frame}{Frame with notes}
+  Slide content for frame two.
+  \note{Notes for frame two.
+    \begin{itemize}
+      \item Remember to mention the first point.
+      \item And the second.
+    \end{itemize}}
+\end{frame}
+\begin{frame}{Frame with overlays and notes}
+  Build one.
+  \pause
+  Build two.
+  \note<1>{Notes shown with build one.}
+  \note<2>{Notes shown with build two.}
+\end{frame}
+\begin{frame}{Frame without notes}
+  No notes here; the notes panel should be empty.
+\end{frame}
+\begin{frame}{Last frame}
+  Closing slide.
+  \note{Thank the audience.}
+\end{frame}
+\end{document}

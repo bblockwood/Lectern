@@ -27,6 +27,8 @@ Fixtures/src/*.vrb
 Fixtures/src/*.fls
 Fixtures/src/*.fdb_latexmk
 Fixtures/src/*.synctex.gz
+Fixtures/src/*.upa
+Fixtures/src/*.upb
 Fixtures/src/*.pdf
 Fixtures/src/build/
 

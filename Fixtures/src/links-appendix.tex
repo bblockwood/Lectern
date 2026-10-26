@@ -1,0 +1,60 @@
+% Fixture 6: hyperlinks into \appendix frames, navigation symbols on (default), named actions.
+\documentclass[aspectratio=169]{beamer}
+\usetheme{default}
+\title{Links and appendix}
+\subtitle{Fixture 6}
+\author{Lectern fixtures}
+\date{}
+\begin{document}
+\begin{frame}
+  \titlepage
+\end{frame}
+\section{Introduction}
+\begin{frame}{Introduction}
+  The proof is in the \hyperlink{backup-proof}{\beamergotobutton{backup proof}}.
+  The data are in the \hyperlink{backup-data}{\beamergotobutton{backup data}}.
+
+  \medskip
+  Named actions:
+  \Acrobatmenu{NextPage}{\beamerbutton{NextPage}}
+  \Acrobatmenu{PrevPage}{\beamerbutton{PrevPage}}
+  \Acrobatmenu{FirstPage}{\beamerbutton{FirstPage}}
+  \Acrobatmenu{LastPage}{\beamerbutton{LastPage}}
+  \Acrobatmenu{GoBack}{\beamerbutton{GoBack}}
+  \Acrobatmenu{GoForward}{\beamerbutton{GoForward}}
+
+  \medskip
+  A URI link: \href{https://example.org/}{example.org} (ignored by default).
+\end{frame}
+\section{Results}
+\subsection{Main result}
+\begin{frame}{Results with builds}
+  Build one.
+  \pause
+  Build two: \hyperlinkframestartnext{\beamerskipbutton{skip to next frame}}
+  \pause
+  Build three: \hyperlinkframestart{\beamerreturnbutton{back to build one}}
+\end{frame}
+\subsection{Discussion}
+\begin{frame}{Discussion}
+  Jump to the \hyperlinkappendixstart{\beamergotobutton{appendix}} or to the
+  \hyperlinkpresentationend{\beamergotobutton{end of the main talk}}.
+\end{frame}
+\section{Conclusion}
+\begin{frame}{Conclusion}
+  Last frame of the main talk. The next frames are backup.
+\end{frame}
+\appendix
+\section{Appendix}
+\begin{frame}[label=backup-proof]{Backup: proof}
+  A proof. \hyperlinkpresentationend{\beamerreturnbutton{return}}
+\end{frame}
+\begin{frame}[label=backup-data]{Backup: data}
+  Data with builds.
+  \pause
+  More data. \hyperlinkdocumentstart{\beamerreturnbutton{start}}
+\end{frame}
+\begin{frame}{Backup: last}
+  Last backup frame.
+\end{frame}
+\end{document}

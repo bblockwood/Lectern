@@ -1,0 +1,37 @@
+% Fixture 5: notes via the pdfcomment package, in several annotation shapes.
+% Frame 5 carries a FreeText annotation that IS visible content and must not be treated as a note.
+\documentclass[aspectratio=169]{beamer}
+\usetheme{default}
+\usepackage{pdfcomment}
+\title{pdfcomment notes}
+\subtitle{Fixture 5}
+\author{Lectern fixtures}
+\date{}
+\begin{document}
+\begin{frame}
+  \titlepage
+  \pdfcomment{Title page note via pdfcomment with the default icon.}
+\end{frame}
+\section{Main}
+\begin{frame}{Note icon with subject}
+  Slide content.
+  \pdfcomment[icon=Note,color=yellow,subject={Speaker notes}]{A note with the Note icon, a colour and a subject.}
+\end{frame}
+\begin{frame}{Margin note with overlays}
+  \pdfmargincomment{A margin note (pdfmargincomment).}
+  Build one.
+  \pause
+  Build two.
+\end{frame}
+\begin{frame}{Open comment with author}
+  Slide text.
+  \pdfcomment[open=true,author={Ben},icon=Insert]{A note whose popup is open (/Open true) and that carries an author (/T).}
+\end{frame}
+\begin{frame}{Free text (visible annotation)}
+  Slide text.
+  \pdffreetextcomment[width=5cm,height=1cm,voffset=-2cm,color=red,fontcolor=black]{A FreeText annotation: visible content, not a note.}
+\end{frame}
+\begin{frame}{No annotations}
+  Nothing attached.
+\end{frame}
+\end{document}

@@ -1,0 +1,60 @@
+% Fixture 2: 4:3 with heavy \pause, \only and \uncover. Every overlay of a frame shares a page label.
+\documentclass[aspectratio=43]{beamer}
+\usetheme{default}
+\title{Overlays}
+\subtitle{Fixture 2}
+\author{Lectern fixtures}
+\date{}
+\begin{document}
+\begin{frame}
+  \titlepage
+\end{frame}
+\section{Pauses}
+\begin{frame}{Pause: three builds}
+  First paragraph, visible from the start.
+  \pause
+  Second paragraph, after one pause.
+  \pause
+  Third paragraph, after two pauses.
+\end{frame}
+\begin{frame}{Itemize with overlay specs: four builds}
+  \begin{itemize}
+    \item<1-> One
+    \item<2-> Two
+    \item<3-> Three
+    \item<4-> Four
+  \end{itemize}
+\end{frame}
+\section{Only and uncover}
+\begin{frame}{Only: three builds that replace content}
+  \only<1>{Version A of the content.}
+  \only<2>{Version B replaces version A entirely.}
+  \only<3>{Version C replaces version B.}
+\end{frame}
+\begin{frame}{Uncover: two builds}
+  Always visible.
+  \uncover<2->{Uncovered on build 2 (space reserved on build 1).}
+\end{frame}
+\begin{frame}{No overlays}
+  A single-page frame between overlay frames.
+\end{frame}
+\begin{frame}{Alt and visible: three builds}
+  \alt<2>{Alternative text on build 2.}{Default text on builds 1 and 3.}
+
+  \visible<3->{Visible from build 3.}
+\end{frame}
+\section{Mixed}
+\begin{frame}{Mixed: five builds}
+  \begin{enumerate}
+    \item<1-> Step one
+    \item<2-> Step two \only<2>{(current)}
+    \item<3-> Step three
+    \item<4-> Step four
+  \end{enumerate}
+  \pause\pause\pause\pause
+  Done after five builds.
+\end{frame}
+\begin{frame}{Last frame, no overlays}
+  The end.
+\end{frame}
+\end{document}
