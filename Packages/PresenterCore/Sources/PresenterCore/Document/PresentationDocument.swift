@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import PDFKit
+import PresenterProtocol
 
 public enum DocumentError: Error, Equatable, Sendable {
     /// CoreGraphics could not parse the file (malformed, truncated, encrypted with a password, not a PDF).
@@ -43,8 +44,35 @@ public struct PresentationDocument: Sendable {
     public let title: String?
     /// True when the PDF defines a /PageLabels tree. Without one, labels are page numbers and every page is a frame.
     public let hasPageLabels: Bool
+    public let outline: Outline
+    /// Link annotations per page (SPEC §4.3).
+    public let links: [[PageLink]]
+    public let pdfpc: PDFPCMetadata?
+    /// Index of the last page of the main talk (SPEC §4.2), nil when unknown. The sidecar (M3) may override.
+    public let endOfTalkPage: Int?
 
     public var pageCount: Int { pages.count }
+
+    public func links(onPage page: Int) -> [PageLink] {
+        links.indices.contains(page) ? links[page] : []
+    }
+
+    public func link(_ id: LinkID) -> PageLink? {
+        let pageLinks = links(onPage: id.page)
+        return pageLinks.indices.contains(id.index) ? pageLinks[id.index] : nil
+    }
+
+    /// True for pages after the end of the main talk.
+    public func isAppendix(page: Int) -> Bool {
+        guard let end = endOfTalkPage else { return false }
+        return page > end
+    }
+
+    /// Frames in the main talk (all frames when the end is unknown).
+    public var mainTalkFrameCount: Int {
+        guard let end = endOfTalkPage else { return frames.frameCount }
+        return frames.frame(containing: end).index + 1
+    }
 
     /// Loads the PDF structure. Never throws for a merely odd PDF; throws `DocumentError` when CoreGraphics
     /// cannot open it or it has no pages. Safe to call off the main thread.
@@ -54,8 +82,8 @@ public struct PresentationDocument: Sendable {
         guard count > 0 else { throw DocumentError.noPages(url) }
 
         let hasLabels = PresentationDocument.catalogHasPageLabels(cgDocument)
-        // PDFKit does the /PageLabels number-tree work; it falls back to page numbers when there is no tree.
-        let pdfKit = hasLabels ? PDFDocument(url: url) : nil
+        // PDFKit does the /PageLabels number tree, outline, link destinations and text; CoreGraphics does the rendering.
+        let pdfKit = PDFDocument(url: url)
 
         var pages: [PageInfo] = []
         pages.reserveCapacity(count)
@@ -64,7 +92,7 @@ public struct PresentationDocument: Sendable {
             let box = page.getBoxRect(.cropBox)
             let rotation = ((Int(page.rotationAngle) % 360) + 360) % 360
             let size = rotation % 180 == 0 ? box.size : CGSize(width: box.height, height: box.width)
-            let label = pdfKit?.page(at: i)?.label
+            let label = hasLabels ? pdfKit?.page(at: i)?.label : nil
             pages.append(PageInfo(index: i, label: label, size: size, rotation: rotation))
         }
         guard !pages.isEmpty else { throw DocumentError.noPages(url) }
@@ -78,13 +106,29 @@ public struct PresentationDocument: Sendable {
             }
         }
 
+        let frames = FrameIndex(labels: pages.map(\.label))
+        var links: [[PageLink]] = []
+        var outline = Outline.empty
+        if let pdfKit {
+            links = (0..<pages.count).map { i in
+                guard let page = pdfKit.page(at: i) else { return [] }
+                return PageLink.extract(from: page, pageIndex: i, in: pdfKit)
+            }
+            outline = Outline.build(from: pdfKit)
+        }
+        let pdfpc = PDFPCMetadata.read(from: cgDocument)
+
         return PresentationDocument(
             url: url,
             pages: pages,
-            frames: FrameIndex(labels: pages.map(\.label)),
+            frames: frames,
             source: PDFSource(document: cgDocument),
             title: title,
-            hasPageLabels: hasLabels
+            hasPageLabels: hasLabels,
+            outline: outline,
+            links: links,
+            pdfpc: pdfpc,
+            endOfTalkPage: EndOfTalk.resolve(pdfpc: pdfpc, sidecar: nil, outline: outline, frames: frames)
         )
     }
 

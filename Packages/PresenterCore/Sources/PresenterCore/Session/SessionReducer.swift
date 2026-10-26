@@ -4,8 +4,16 @@ import PresenterProtocol
 /// Pure implementation of the §3.2 command semantics. No side effects; fully testable.
 public struct SessionReducer: Sendable {
     public let frames: FrameIndex
+    public let links: [[PageLink]]
 
-    public init(frames: FrameIndex) { self.frames = frames }
+    public init(frames: FrameIndex, links: [[PageLink]] = []) {
+        self.frames = frames
+        self.links = links
+    }
+
+    public init(document: PresentationDocument) {
+        self.init(frames: document.frames, links: document.links)
+    }
 
     public var pageCount: Int { frames.pageCount }
 
@@ -29,13 +37,10 @@ public struct SessionReducer: Sendable {
             jump(&state, to: page)
         case .goToFrameLabel(let label):
             if let frame = frames.frame(withLabel: label) { jump(&state, to: frame.firstPage) }
-        case .followLink:
-            break // M2: resolved by the document's link table before reaching the reducer as goToPage/back.
+        case .followLink(let id):
+            follow(id, &state, now: now)
         case .back:
-            guard let previous = state.history.popLast() else { return }
-            state.browsePage = nil
-            state.committedPage = clamp(previous)
-            clearPageScopedState(&state)
+            goBack(&state)
 
         case .beginBrowse:
             if state.browsePage == nil { state.browsePage = state.committedPage }
@@ -46,6 +51,7 @@ public struct SessionReducer: Sendable {
             state.browsePage = nil
             if page != state.committedPage {
                 state.history.append(state.committedPage)
+                state.forwardHistory = []
                 state.committedPage = page
                 clearPageScopedState(&state)
             }
@@ -81,6 +87,44 @@ public struct SessionReducer: Sendable {
         }
     }
 
+    // MARK: - Links and history
+
+    private func follow(_ id: LinkID, _ state: inout SessionState, now: Date) {
+        guard links.indices.contains(id.page), links[id.page].indices.contains(id.index) else { return }
+        switch links[id.page][id.index].action {
+        case .goToPage(let page):
+            jump(&state, to: page)
+        case .named(let action):
+            switch action {
+            case .nextPage: step(&state, by: 1)
+            case .previousPage: step(&state, by: -1)
+            case .firstPage: jump(&state, to: 0)
+            case .lastPage: jump(&state, to: pageCount - 1)
+            case .goBack: goBack(&state)
+            case .goForward: goForward(&state)
+            case .goToPage, .find, .other: break
+            }
+        case .uri, .launch, .unsupported:
+            break   // URIs are the app's business (confirmation, settings); launch is M9.
+        }
+    }
+
+    private func goBack(_ state: inout SessionState) {
+        guard let previous = state.history.popLast() else { return }
+        state.forwardHistory.append(state.committedPage)
+        state.browsePage = nil
+        state.committedPage = clamp(previous)
+        clearPageScopedState(&state)
+    }
+
+    private func goForward(_ state: inout SessionState) {
+        guard let next = state.forwardHistory.popLast() else { return }
+        state.history.append(state.committedPage)
+        state.browsePage = nil
+        state.committedPage = clamp(next)
+        clearPageScopedState(&state)
+    }
+
     // MARK: - Helpers
 
     /// Steps move the browse page while browsing, otherwise the committed page. Never push history.
@@ -104,6 +148,7 @@ public struct SessionReducer: Sendable {
         state.browsePage = nil
         guard target != state.committedPage else { return }
         state.history.append(state.committedPage)
+        state.forwardHistory = []
         state.committedPage = target
         clearPageScopedState(&state)
     }

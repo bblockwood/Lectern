@@ -124,3 +124,13 @@ Build and run from the terminal: `xcodegen generate && xcodebuild -scheme Lecter
 8. **Latency on the projector.** Run `build/DerivedData/Build/Products/Debug/Lectern.app/Contents/MacOS/Lectern -selftest "$PWD/Fixtures/basic-169.pdf"` with the projector attached: the self-test uses the real audience display, and the printed "first vsync" numbers then reflect the projector's fixed refresh rate. Paste the output into an issue. Separately, hold → down and watch the projector: pages should change at key-repeat rate without stutter.
 
 Please also report anything that looks wrong in the presenter layout; nothing in M1 has been seen on a real second display yet.
+
+## M2: Mac navigation (branch `m2-mac-navigation`)
+
+Started 2026-10-25.
+
+### Plan
+
+1. **PresenterCore**: `Outline` from PDFKit with the §4.2 appendix heuristic; `PDFPCMetadata` from the XMP packet (`pdfpc:Duration`, `pdfpc:EndUserSlide`, …) so `endOfTalkPage` resolves pdfpc → (sidecar, M3) → outline; `PageLink` extraction per page via PDFKit (GoTo, named actions, URI, launch) with rects normalised to the rotated page; `TextSearcher` actor over PDFKit's text layer with hits grouped by frame; reducer handles `followLink` (GoTo pushes history, named actions map to steps/jumps/back/forward) and keeps a forward stack for `GoForward`. Tests on fixtures 4 and 6.
+2. **App**: overview (Tab) with a frame grid of last-page thumbnails from a separate small `RenderCache`, outline sidebar and search field; arrows/clicks browse privately with the PREVIEW banner, Return commits, Esc cancels; jump by number (digits + Return) from anywhere; link activation by click on the presenter's current slide and on the audience window with a hand cursor; APPENDIX badge and remaining main-talk frames in the status bar; URI links ignored unless a defaults flag enables opening them after confirmation.
+3. **Acceptance**: unit test of the fixture 6 round trip (link → appendix, Delete → back) at the reducer level, and a self-test scenario that clicks the link rect on the presenter surface and presses Delete.

@@ -44,6 +44,8 @@ public struct SessionState: Hashable, Sendable {
     public var ink: InkState = InkState()
     /// Back stack of page indices from jumps (links, jump-by-number, committed browses).
     public var history: [Int] = []
+    /// Pages `back` left, for the GoForward named action. Cleared by any new jump.
+    public var forwardHistory: [Int] = []
     public var timer: TimerState = TimerState()
     public var displayConfig: DisplayConfig = DisplayConfig()
 
