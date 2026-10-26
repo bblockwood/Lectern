@@ -235,3 +235,45 @@ Found by Ben on first launch: every slide rendered as tiny content centred in a 
 - **Also.** `Fixtures/*.lectern.json` is now gitignored and two sidecars the M3 self-tests had committed by accident were removed; the Team ID instructions in the template and both device checklists now use `security find-certificate`, since Xcode 27's Settings no longer shows the ID.
 
 Verified: 90 PresenterCore tests, 1 PresenterProtocol test, 12 app tests, warnings-as-errors build; in-app screenshots of `overlays.pdf` at full pane size; self-tests on `overlays.pdf` and `tikz-heavy.pdf` with no misses.
+
+## Feedback round 1 (2026-10-26, branch `feedback-1`)
+
+Ben's first-use feedback on the Mac presenter, eight items, all in the chrome and navigation:
+
+### Plan
+
+1. Closing the deck with the window's red button returns to the welcome screen instead of quitting (⌘W already did). Closing the welcome screen quits.
+2. Status bar: timer fixed at the centre regardless of the frame/build text; about twice the height; larger type.
+3. Settings window (⌘,): back-navigation option (← at the start of a frame lands on the previous frame's first build instead of its last), hold-⌘ overlay on/off, notes size, web links. Pulled forward from M10 at Ben's request; the option is implemented in `SessionReducer` behind `NavigationOptions`.
+4. Current and next slides top-aligned under matching pane titles, each sized to its exact fitted rect.
+5. Larger type everywhere in the presenter (a `Theme` table; notes default 22 pt).
+6. Laser / Pen / Clear buttons directly under the current slide, lit when active, driving the same actions as L, D and E.
+7. Holding ⌘ for a third of a second shows a translucent overlay of every shortcut; releasing hides it.
+
+### Feedback round 1 report (2026-10-26)
+
+All eight items are in, each verified in-app by screenshots from the self-test (`-screenshot DIR`, with the new `-shortcuts`, `-settings` and `-closebutton` steps):
+
+1. **Close returns to the welcome screen.** `windowShouldClose` closes the deck and keeps the window when a deck is open; ⌘W did this already. Closing the welcome screen quits. Self-test: `performClose` on the presenter window leaves the window open on the welcome screen with no deck.
+2. **Status bar.** Three fixed regions in a `ZStack`: frame / build / frames-left on the left, timer and clock always centred, LIVE pill on the right. Twice the height (30 pt frame label and timer, 24 pt secondary, 14 pt vertical padding). The POINTER / DRAW badges moved out of the bar into the buttons under the slide.
+3. **Settings (⌘,).** `SettingsView` in its own window: ← landing option (see `docs/decisions.md`), hold-⌘ overlay toggle, notes size stepper, web links toggle. `NavigationOptions` in PresenterCore; `SessionController.navigationOptions` is read on every command, so a change applies to the next key press. Keys pressed while the Settings window is key no longer reach the presenter, and ⌘W there closes Settings. Four new reducer tests.
+4. **Aligned slide tops.** Both slide panes start with a 16 pt title ("Current", "Next") and size their surface to the exact fitted rect pinned to the top, so the top edges line up at any split. Second-screen decks use the cropped aspect.
+5. **Larger type.** A `Theme` table: status 30/24, pane titles 16, body 18, small 14; notes default 22 pt (was 18; ⌘+/⌘− and the Settings stepper share the stored value). Banners, badges, overview captions and the welcome screen follow it.
+6. **Laser / Pen / Clear buttons** directly under the current slide, lit red / orange when active, with their keys shown; they drive the same `AppAction`s as L, D and E. A hint to the right says what the active mode does.
+7. **Hold ⌘ overlay.** A `flagsChanged` monitor arms a 350 ms task when ⌘ is the only modifier and the presenter window is key; the overlay lists every shortcut in three columns at 94 % black and hides on release, on any other modifier, or on any key press (so ⌘-shortcuts never flash it). `ShortcutReference` mirrors `KeyMap` and the menu. Self-test posts real ⌘ down/up events and checks both transitions.
+8. The welcome screen's hint line now says "hold ⌘ for every shortcut".
+
+**Known issues**
+
+- `ShortcutReference` is a hand-maintained list; a new key in `KeyMap` must be added there too.
+- The overlay is sized for the default window; on a very narrow presenter window the three columns would overflow (it is not scrollable).
+- The Settings window is not resizable and uses the system (light) appearance, unlike the presenter.
+
+**Ben device checklist (feedback round 1, no new hardware)**
+
+1. Open a deck and click the window's red close button: the welcome screen with recents comes back, the app stays open. Close the welcome screen: the app quits.
+2. Step through `Fixtures/overlays.pdf`: the timer stays centred while "Build x/y" appears and disappears on the left; the bar is about twice its old height.
+3. The top edge of the current slide and of the Next slide line up; drag the vertical split and they still do.
+4. Click Laser under the slide: it lights red and the dot follows the mouse over the slide (and on the projector); click it again or press L to turn it off. Same for Pen (orange) and Clear.
+5. Hold ⌘ for half a second: the shortcut card appears; release: it goes. Press ⌘E normally: no card flashes.
+6. ⌘, opens Settings. Choose "the previous frame's first build", then in `overlays.pdf` go to frame 3 build 1 and press ←: you land on frame 2 build 1 (not build 3). Switch back and ← lands on frame 2's last build. Tell me if you meant something different by "jumps to the first build of each frame".
