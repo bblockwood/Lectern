@@ -1,5 +1,7 @@
 // Copy to Config/Local.xcconfig (gitignored) and fill in your Apple Developer Team ID.
-// Find it in Xcode: Settings > Accounts > your Apple ID > select the team; the Team ID is shown on the right.
+// Find it from the terminal (Xcode 27 no longer shows it in Settings):
+//   security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject
+// The Team ID is the OU= field. The ID in parentheses after your email is a certificate ID, not the team.
 // Or at https://developer.apple.com/account under Membership details.
 DEVELOPMENT_TEAM = XXXXXXXXXX
 CODE_SIGN_STYLE = Automatic

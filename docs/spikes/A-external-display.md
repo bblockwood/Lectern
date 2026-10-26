@@ -109,7 +109,7 @@ Everything below runs from the terminal except the taps on the iPad. The iPad na
 
 **One-time setup**
 
-1. `cp Config/Local.xcconfig.example Config/Local.xcconfig` and put your Team ID in `DEVELOPMENT_TEAM` (Xcode → Settings → Accounts → your Apple ID → the team row shows it, or developer.apple.com → Membership).
+1. `cp Config/Local.xcconfig.example Config/Local.xcconfig` and put your Team ID in `DEVELOPMENT_TEAM` (read the `OU=` field of `security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject`, or developer.apple.com → Membership; Xcode 27 no longer shows it in Settings).
 2. Xcode must be signed in to that Apple ID once (Xcode → Settings → Accounts → +). This lets `xcodebuild` create the signing profile itself.
 3. `xcrun devicectl list devices` and note the identifier of "BL iPad".
 
