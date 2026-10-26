@@ -63,10 +63,10 @@ final class AudienceWindowController: NSObject, NSWindowDelegate {
             window.collectionBehavior = [.managed, .participatesInCycle]
             window.contentAspectRatio = NSSize(width: aspect, height: 1)
             let width: CGFloat = 960
-            let size = NSSize(width: width, height: (width / aspect).rounded())
+            let contentSize = NSSize(width: width, height: (width / aspect).rounded())
+            window.setContentSize(contentSize)
             let screenFrame = (near ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-            let origin = NSPoint(x: screenFrame.maxX - size.width - 40, y: screenFrame.minY + 40)
-            window.setFrame(NSRect(origin: origin, size: size), display: true)
+            window.setFrameOrigin(NSPoint(x: screenFrame.maxX - window.frame.width - 40, y: screenFrame.minY + 40))
         }
     }
 

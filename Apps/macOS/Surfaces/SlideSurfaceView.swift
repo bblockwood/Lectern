@@ -14,8 +14,9 @@ final class SlideSurfaceView: NSView {
     }
     /// Called after layout, backing-scale or window changes; the controller re-fits the page.
     var onGeometryChange: (() -> Void)?
-    /// Called on the first display-link tick after `requestFrameCallback()`, with the tick's target timestamp.
-    var onFrame: ((CFTimeInterval) -> Void)?
+    /// Called on the first display-link tick after `requestFrameCallback()`: the tick's own vsync timestamp
+    /// (the earliest the committed frame can be on glass) and its target timestamp (the latest).
+    var onFrame: ((_ vsync: CFTimeInterval, _ target: CFTimeInterval) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -130,6 +131,6 @@ final class SlideSurfaceView: NSView {
     @objc private func displayLinkFired(_ link: CADisplayLink) {
         link.invalidate()
         if displayLink === link { displayLink = nil }
-        onFrame?(link.targetTimestamp)
+        onFrame?(link.timestamp, link.targetTimestamp)
     }
 }

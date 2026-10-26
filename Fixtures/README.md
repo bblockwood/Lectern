@@ -5,7 +5,7 @@ Built from `src/*.tex` with `make` (latexmk + pdfTeX, TeX Live 2021). The built 
 | # | File | Pages | What it exercises |
 |---|---|---|---|
 | 1 | `basic-169.pdf` | 20 | 16:9, 20 single-page frames, 4 outline sections. Labels 1–20. |
-| 2 | `overlays.pdf` | 23 | 4:3, `\pause`, `\only`, `\uncover`, `\alt`, `\visible`. 10 frames; builds per frame: 1,3,4,3,2,1,3,5,1. |
+| 2 | `overlays.pdf` | 23 | 4:3, `\pause`, `\only`, `\uncover`, `\alt`, `\visible`. 9 frames; builds per frame: 1,3,4,3,2,1,3,5,1. |
 | 3 | `notes-right.pdf`, `notes-bottom.pdf` | 6 each | Beamer second-screen notes via pgfpages. Pages are 907×255 pt (right, 16:9 slide) and 362×544 pt (bottom, 4:3 slide). 5 frames, frame 3 has 2 builds. |
 | 4 | `pdfpc-notes.pdf` + `pdfpc-notes.pdfpc` | 10 | `\pdfpcnote` from pdfpc.sty v0.6.0, plus a JSON `.pdfpc` sidecar. 7 frames (frame 3: 3 builds, frame 4: 2), `\appendix` before frame 6. Package options `duration=30,enduserslide=5`. |
 | 5 | `pdfcomment-notes.pdf` | 7 | `\pdfcomment` (Comment icon, Note icon, `open=true` with author), `\pdfmargincomment`, and a visible `\pdffreetextcomment` on page 6. Page 7 has no annotations. |

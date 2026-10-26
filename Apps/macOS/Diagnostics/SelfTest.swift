@@ -42,6 +42,7 @@ final class SelfTest {
     private func drive(forward: Int, presentation: Presentation) async {
         try? await Task.sleep(for: .seconds(1.5))   // let the first prefetch ring land
         for _ in 0..<forward { await press(keyCode: 124, character: "\u{F703}") }   // → next
+        captureScreenshots()
         for _ in 0..<forward { await press(keyCode: 123, character: "\u{F702}") }   // ← previous
         // A few frame jumps and a back, which may legitimately miss.
         await press(keyCode: 124, character: "\u{F703}", shift: true)
@@ -68,6 +69,33 @@ final class SelfTest {
         try? await Task.sleep(for: .milliseconds(120))
     }
 
+    /// `-screenshot DIR` renders the presenter and audience windows in-process (no screen-recording permission needed).
+    private func captureScreenshots() {
+        guard let index = CommandLine.arguments.firstIndex(of: "-screenshot"), CommandLine.arguments.indices.contains(index + 1) else { return }
+        let dir = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for window in NSApp.windows where window.isVisible {
+            guard let view = window.contentView, let layer = view.layer else { continue }
+            let scale = window.backingScaleFactor
+            let width = Int(view.bounds.width * scale), height = Int(view.bounds.height * scale)
+            guard width > 0, height > 0,
+                  let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+            else { continue }
+            ctx.scaleBy(x: scale, y: scale)
+            if view.isFlipped || layer.isGeometryFlipped {
+                ctx.translateBy(x: 0, y: view.bounds.height)
+                ctx.scaleBy(x: 1, y: -1)
+            }
+            layer.render(in: ctx)
+            guard let image = ctx.makeImage() else { continue }
+            let name = (window is PresenterWindow ? "presenter" : "audience") + ".png"
+            let rep = NSBitmapImageRep(cgImage: image)
+            try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent(name))
+        }
+    }
+
     private func report(presentation: Presentation) {
         let name = url.lastPathComponent
         let summary = Latency.shared.summary(of: samples)
@@ -89,8 +117,13 @@ final class SelfTest {
                              s.inputToFrame.map { String(format: "%.1f", $0) } ?? "–"))
             }
         }
-        let over = samples.compactMap(\.inputToFrame).filter { $0 > 16.7 }.count
-        print("samples over one 60 Hz frame (16.7 ms) to frame target: \(over)")
+        let periods = samples.compactMap(\.refreshPeriod)
+        let period = periods.isEmpty ? 0 : periods.sorted()[periods.count / 2]
+        let overVsync = samples.compactMap(\.inputToVsync).filter { $0 > period }.count
+        let overTarget = samples.compactMap(\.inputToFrame).filter { $0 > period * 2 }.count
+        print(String(format: "display refresh period %.2f ms; samples whose first vsync is later than one refresh after input: %d; whose frame target is later than two: %d", period, overVsync, overTarget))
+        let timer = presentation.state.timer
+        print(String(format: "timer: running %@, elapsed %.1f s (auto-started on the first advance)", timer.isRunning ? "yes" : "no", timer.elapsed(at: Date())))
         print("store: \(presentation.cache.store.count) images, \(presentation.cache.store.bytesUsed / 1_048_576) MB of \(presentation.cache.store.budgetBytes / 1_048_576) MB, \(presentation.cache.store.evictions) evictions")
     }
 }

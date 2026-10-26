@@ -24,9 +24,9 @@ final class SurfaceController {
         self.cache = cache
         self.view = SlideSurfaceView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
         view.onGeometryChange = { [weak self] in self?.geometryChanged() }
-        view.onFrame = { [weak self] target in
+        view.onFrame = { [weak self] vsync, target in
             guard let self else { return }
-            Latency.shared.framePresented(role: self.role, targetTimestamp: target)
+            Latency.shared.framePresented(role: self.role, vsync: vsync, target: target)
         }
     }
 
@@ -50,7 +50,7 @@ final class SurfaceController {
         view.showSolid(color)
         fetching = nil
         Latency.shared.contentsShown(role: role, hit: true, page: nil)
-        view.requestFrameCallback()
+        if Latency.shared.measuresFrames { view.requestFrameCallback() }
     }
 
     private func geometryChanged() {
@@ -95,6 +95,6 @@ final class SurfaceController {
         view.show(image: image)
         shown = request
         Latency.shared.contentsShown(role: role, hit: hit, page: request.pageIndex)
-        view.requestFrameCallback()
+        if Latency.shared.measuresFrames { view.requestFrameCallback() }
     }
 }
