@@ -1,0 +1,3 @@
+// Pulls in Ben's gitignored signing settings when present (DEVELOPMENT_TEAM etc.).
+// The optional include keeps Simulator builds working on a fresh clone.
+#include? "../../Config/Local.xcconfig"

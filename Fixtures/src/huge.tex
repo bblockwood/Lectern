@@ -1,0 +1,47 @@
+% Fixture 10: 300+ pages for memory and thumbnail stress. 320 frames; every fourth frame has two builds.
+\documentclass[aspectratio=169]{beamer}
+\usetheme{default}
+\usepackage{tikz}
+\usepackage{pgffor}
+\title{Huge deck}
+\subtitle{Fixture 10}
+\author{Lectern fixtures}
+\date{}
+\newcommand{\hugeframe}[1]{%
+  \begin{frame}{Frame #1}
+    \begin{columns}
+      \begin{column}{0.5\textwidth}
+        \begin{itemize}
+          \item This is frame #1 of 320.
+          \item \pgfmathparse{int(mod(#1,4))}\ifnum\pgfmathresult=0 \pause \fi Second item\pgfmathparse{int(mod(#1,4))}\ifnum\pgfmathresult=0 { (build 2)}\fi.
+        \end{itemize}
+      \end{column}
+      \begin{column}{0.5\textwidth}
+        \begin{tikzpicture}
+          \pgfmathsetmacro{\h}{1 + 3*abs(sin(#1*7))}
+          \fill[blue!60] (0,0) rectangle (1,\h);
+          \fill[red!60] (1.5,0) rectangle (2.5,{4-\h});
+          \fill[green!60] (3,0) rectangle (4,{0.5+mod(#1,7)/2});
+          \draw (0,0) -- (4.5,0);
+        \end{tikzpicture}
+      \end{column}
+    \end{columns}
+  \end{frame}}
+\begin{document}
+\begin{frame}
+  \titlepage
+\end{frame}
+\foreach \i in {1,...,300} {
+  \pgfmathparse{int(mod(\i-1,20))}
+  \ifnum\pgfmathresult=0
+    \pgfmathparse{int((\i-1)/20+1)}
+    \section{Part \pgfmathresult}
+  \fi
+  \hugeframe{\i}
+}
+\appendix
+\section{Backup}
+\foreach \i in {301,...,320} {
+  \hugeframe{\i}
+}
+\end{document}

@@ -1,0 +1,48 @@
+% Fixture 4: notes via the pdfpc LaTeX package (v0.6.0 emits /Subtype /Text annotations with /F 6,
+% and pdfpc:Duration, pdfpc:EndUserSlide, ... in the XMP metadata via hyperxmp).
+\documentclass[aspectratio=169]{beamer}
+\usetheme{default}
+\usepackage[duration=30,enduserslide=5,lastminutes=5]{pdfpc}
+\title{pdfpc notes}
+\subtitle{Fixture 4}
+\author{Lectern fixtures}
+\date{}
+\begin{document}
+\begin{frame}
+  \titlepage
+  \pdfpcnote{Title page note. Welcome everyone.}
+\end{frame}
+\section{Main}
+\begin{frame}{Frame with a multi-line note}
+  Slide content.
+  \pdfpcnote{First line of the note.\\Second line of the note.\\- a markdown list item\\- another item}
+\end{frame}
+\begin{frame}{Frame with overlays}
+  Build one.
+  \pause
+  Build two.
+  \pause
+  Build three.
+  \pdfpcnote{This note is attached to every build because it is not wrapped in an overlay spec.}
+\end{frame}
+\begin{frame}{Overlay-specific notes}
+  Build one.
+  \pause
+  Build two.
+  \only<1>{\pdfpcnote{Note for build one only.}}
+  \only<2>{\pdfpcnote{Note for build two only.}}
+\end{frame}
+\begin{frame}{End of main talk}
+  This is user slide 5, the enduserslide.
+  \pdfpcnote{Last slide of the main talk; the remaining frames are backup.}
+\end{frame}
+\appendix
+\section{Backup}
+\begin{frame}{Backup slide}
+  Backup content.
+  \pdfpcnote{Backup note.}
+\end{frame}
+\begin{frame}{Backup without a note}
+  Nothing here.
+\end{frame}
+\end{document}

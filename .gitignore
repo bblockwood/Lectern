@@ -16,6 +16,9 @@ Packages/*/.swiftpm/
 # Ben's local signing config
 Config/Local.xcconfig
 
+# Info.plists that XcodeGen writes from `info.properties` in a project.yml
+Spikes/**/Info.plist
+
 # LaTeX build artifacts (outputs *.pdf in Fixtures/ are kept)
 Fixtures/src/*.aux
 Fixtures/src/*.log
@@ -27,6 +30,8 @@ Fixtures/src/*.vrb
 Fixtures/src/*.fls
 Fixtures/src/*.fdb_latexmk
 Fixtures/src/*.synctex.gz
+Fixtures/src/*.upa
+Fixtures/src/*.upb
 Fixtures/src/*.pdf
 Fixtures/src/build/
 

@@ -1,0 +1,60 @@
+# Spike A: iPad external display (SPEC §11 M0). Throwaway; not part of the main project.
+# Regenerate with `xcodegen generate` in this directory.
+name: SpikeExternalDisplay
+options:
+  bundleIdPrefix: dev.lectern.spike
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+# Signing.xcconfig optionally includes Ben's gitignored Config/Local.xcconfig.
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  SpikeExternalDisplay:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lectern.spike.externaldisplay
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: NO
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Spike ExtDisplay
+        UILaunchScreen: {}
+        NSUserActivityTypes: [dev.lectern.spike.audience-window]
+        # Terminal-driven control: xcrun simctl openurl <udid> 'lectern-spike://add?n=1'
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.lectern.spike.externaldisplay
+            CFBundleURLSchemes: [lectern-spike]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Presenter
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).PresenterSceneDelegate
+              - UISceneConfigurationName: AudienceWindow
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).AudienceSceneDelegate
+            UIWindowSceneSessionRoleExternalDisplayNonInteractive:
+              - UISceneConfigurationName: Audience
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).AudienceSceneDelegate
+schemes:
+  SpikeExternalDisplay:
+    build:
+      targets:
+        SpikeExternalDisplay: all
+    run:
+      config: Debug

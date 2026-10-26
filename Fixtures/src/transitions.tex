@@ -1,0 +1,53 @@
+% Fixture 8: page transitions (/Trans) and auto-advance (/Dur) from beamer's \trans* commands.
+\documentclass[aspectratio=169]{beamer}
+\usetheme{default}
+\title{Transitions}
+\subtitle{Fixture 8}
+\author{Lectern fixtures}
+\date{}
+\begin{document}
+\begin{frame}
+  \titlepage
+\end{frame}
+\begin{frame}{Dissolve}
+  \transdissolve
+  This page has a Dissolve transition.
+\end{frame}
+\begin{frame}{Dissolve with explicit duration}
+  \transdissolve[duration=1.5]
+  Dissolve lasting 1.5 s.
+\end{frame}
+\begin{frame}{Fade}
+  \transfade
+  Fade.
+\end{frame}
+\begin{frame}{Wipe}
+  \transwipe[direction=90]
+  Wipe upwards.
+\end{frame}
+\begin{frame}{Push}
+  \transpush[direction=270,duration=0.5]
+  Push.
+\end{frame}
+\begin{frame}{Overlays with per-build transitions}
+  \transdissolve<2->
+  Build one has no transition.
+  \pause
+  Build two dissolves in.
+  \pause
+  Build three dissolves in.
+\end{frame}
+\begin{frame}{Auto-advance}
+  \transduration<1>{1}
+  \transduration<2>{3}
+  Build one advances after 1 s.
+  \pause
+  Build two advances after 3 s.
+  \pause
+  Build three waits.
+\end{frame}
+\begin{frame}{Replace (no transition)}
+  \transreplace
+  Plain replace.
+\end{frame}
+\end{document}

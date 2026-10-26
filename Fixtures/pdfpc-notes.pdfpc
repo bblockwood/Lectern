@@ -1,0 +1,27 @@
+{
+  "pdfpcFormat": 2,
+  "duration": 30,
+  "endSlide": 5,
+  "disableMarkdown": false,
+  "noteFontSize": 14,
+  "pages": [
+    {
+      "idx": 1,
+      "label": "2",
+      "overlay": 0,
+      "note": "Sidecar note for frame 2. It overrides the embedded \\pdfpcnote on this page."
+    },
+    {
+      "idx": 4,
+      "label": "3",
+      "overlay": 2,
+      "note": "Sidecar note for build 3 of frame 3 only.\n\n- builds 1 and 2 keep the embedded note\n- **markdown** is on"
+    },
+    {
+      "idx": 9,
+      "label": "7",
+      "overlay": 0,
+      "note": "Sidecar-only note for the last backup frame, which has no embedded note."
+    }
+  ]
+}

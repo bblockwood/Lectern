@@ -1,0 +1,2 @@
+// Pulls in Ben's gitignored signing settings when they exist; builds still work without them.
+#include? "../../Config/Local.xcconfig"

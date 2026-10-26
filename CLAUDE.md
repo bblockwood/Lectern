@@ -67,3 +67,5 @@ docs/                       progress.md, decisions.md, spikes/
 - latexmk and editors replace files atomically. Watch the directory, debounce, and confirm the new PDF parses before reloading.
 - After M0, follow the recommendations in `docs/spikes/` for the iPad external display and the Watch transport.
 - Don't guess file formats (e.g. `.pdfpc`) or Apple APIs you're unsure of. Check documentation or source, and say when you're uncertain.
+- Xcode 27.1 has no Simulator.app (DeviceHub.app replaced it) and no External Displays menu. Attach a simulated external display from the terminal: `xcrun simctl io <udid> screenConfig --display=external power on`, and capture it with `xcrun simctl io <udid> screenshot --display=external out.png`. See `docs/spikes/A-external-display.md`.
+- `Config/Local.xcconfig` is optional for Simulator builds: each project.yml points at a committed `Signing.xcconfig` that does `#include? "../../Config/Local.xcconfig"`. Keep that pattern for new projects.
