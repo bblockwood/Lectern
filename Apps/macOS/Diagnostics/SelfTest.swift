@@ -43,6 +43,34 @@ final class SelfTest {
         try? await Task.sleep(for: .seconds(1.5))   // let the first prefetch ring land
         for _ in 0..<forward { await press(keyCode: 124, character: "\u{F703}") }   // → next
         captureScreenshots()
+        if CommandLine.arguments.contains("-shortcuts"), let model = (NSApp.delegate as? AppDelegate)?.model {
+            // Hold ⌘ through the real path: flagsChanged → monitor → 350 ms delay → overlay; release hides it.
+            postFlags([.command])
+            try? await Task.sleep(for: .milliseconds(650))
+            let shown = model.shortcutOverlayVisible
+            captureScreenshots(suffix: "-shortcuts")
+            postFlags([])
+            try? await Task.sleep(for: .milliseconds(200))
+            let hidden = !model.shortcutOverlayVisible
+            print("SHORTCUTS overlay \(shown ? "shown after holding ⌘" : "NOT shown after holding ⌘"); \(hidden ? "hidden on release" : "NOT hidden on release")")
+        }
+        if CommandLine.arguments.contains("-closebutton"), let model = (NSApp.delegate as? AppDelegate)?.model,
+           let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
+            // The red button: performClose asks windowShouldClose, which closes the deck and keeps the window.
+            window.performClose(nil)
+            try? await Task.sleep(for: .milliseconds(400))
+            let closed = model.presentation == nil, stillOpen = window.isVisible
+            print("CLOSEBUTTON \(closed ? "deck closed" : "deck NOT closed"); window \(stillOpen ? "still open on the welcome screen" : "GONE")")
+            captureScreenshots(suffix: "-welcome")
+            model.open(url: url)
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+        if CommandLine.arguments.contains("-settings"), let model = (NSApp.delegate as? AppDelegate)?.model {
+            model.showSettings()
+            try? await Task.sleep(for: .milliseconds(500))
+            captureScreenshots(suffix: "-settings")
+            NSApp.windows.first(where: { $0.title == "Settings" })?.close()
+        }
         if CommandLine.arguments.contains("-overview") {
             await press(keyCode: 48, character: "\t")                               // Tab: overview
             await press(keyCode: 124, character: "\u{F703}")                        // → browse one frame on
@@ -182,6 +210,16 @@ final class SelfTest {
         print("ROUNDTRIP \(ok ? "OK" : "FAIL"): page \(before + 1) → click link → page \(afterClick + 1) → Delete → page \(afterBack + 1); history \(presentation.state.history), forward \(presentation.state.forwardHistory)")
     }
 
+    /// Posts a modifier change (⌘ down or up) the way the keyboard would.
+    private func postFlags(_ flags: NSEvent.ModifierFlags) {
+        guard let window = NSApp.windows.first(where: { $0 is PresenterWindow }),
+              let event = NSEvent.keyEvent(with: .flagsChanged, location: .zero, modifierFlags: flags,
+                                           timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                           context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 55)
+        else { return }
+        NSApp.postEvent(event, atStart: false)
+    }
+
     private func press(keyCode: UInt16, character: String, shift: Bool = false) async {
         guard let window = NSApp.windows.first(where: { $0 is PresenterWindow }) else { return }
         let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? [.shift] : [],
@@ -220,7 +258,8 @@ final class SelfTest {
             }
             layer.render(in: ctx)
             guard let image = ctx.makeImage() else { continue }
-            let name = (window is PresenterWindow ? "presenter" : "audience") + suffix + ".png"
+            let kind = window is PresenterWindow ? "presenter" : (window.title == "Settings" ? "settings" : "audience")
+            let name = kind + suffix + ".png"
             let rep = NSBitmapImageRep(cgImage: image)
             try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent(name))
         }

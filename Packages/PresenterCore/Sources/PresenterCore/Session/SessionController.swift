@@ -8,6 +8,8 @@ public final class SessionController {
     public private(set) var document: PresentationDocument
     public private(set) var state: SessionState
     private var reducer: SessionReducer
+    /// Preferences from the app's settings; read on every command so changes apply immediately.
+    public var navigationOptions = NavigationOptions()
 
     /// Called synchronously after every change, with the old and new state, on the main actor.
     public var onChange: ((SessionState, SessionState) -> Void)?
@@ -21,7 +23,7 @@ public final class SessionController {
     public func apply(_ command: Command, now: Date = Date()) {
         let old = state
         var new = state
-        reducer.apply(command, to: &new, now: now)
+        reducer.apply(command, to: &new, now: now, options: navigationOptions)
         commit(old: old, new: new)
     }
 

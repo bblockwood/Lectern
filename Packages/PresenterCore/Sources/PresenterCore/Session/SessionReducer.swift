@@ -17,13 +17,18 @@ public struct SessionReducer: Sendable {
 
     public var pageCount: Int { frames.pageCount }
 
-    public func apply(_ command: Command, to state: inout SessionState, now: Date) {
+    public func apply(_ command: Command, to state: inout SessionState, now: Date, options: NavigationOptions = NavigationOptions()) {
         switch command {
         case .next:
             autoStartTimer(&state, now: now)
             step(&state, by: 1)
         case .previous:
-            step(&state, by: -1)
+            let frame = frames.frame(containing: state.presenterPage)
+            if options.previousLandsOnFrameStart, state.presenterPage == frame.firstPage {
+                setStepTarget(&state, frame.index > 0 ? frames.frames[frame.index - 1].firstPage : 0)
+            } else {
+                step(&state, by: -1)
+            }
         case .nextFrame:
             autoStartTimer(&state, now: now)
             let current = state.presenterPage

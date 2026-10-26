@@ -1,6 +1,26 @@
 import PresenterCore
+import PresenterProtocol
 import SwiftUI
 import UniformTypeIdentifiers
+
+/// Type sizes for the presenter chrome. Everything here is read at a glance from behind a lectern, so it is
+/// larger than ordinary Mac UI (feedback round 1).
+enum Theme {
+    static let status: CGFloat = 30
+    static let statusSecondary: CGFloat = 24
+    static let paneTitle: CGFloat = 16
+    static let body: CGFloat = 18
+    static let small: CGFloat = 14
+    static let notesDefault: Double = 22
+    static let paneSpacing: CGFloat = 6
+
+    /// Largest size with `aspect` (width / height) that fits in `bounds`.
+    static func fit(aspect: CGFloat, in bounds: CGSize) -> CGSize {
+        guard aspect > 0, bounds.width > 0, bounds.height > 0 else { return .zero }
+        let width = min(bounds.width, bounds.height * aspect)
+        return CGSize(width: width.rounded(.down), height: (width / aspect).rounded(.down))
+    }
+}
 
 /// The presenter window's content: the deck layout or the welcome screen, banners, and the status bar (SPEC §6.2).
 struct PresenterRootView: View {
@@ -28,13 +48,17 @@ struct PresenterRootView: View {
                             Text("Go to frame \(Text(model.jumpBuffer).bold()) ⏎")
                             Spacer()
                         }
-                        .font(.title2)
-                        .padding(10)
+                        .font(.system(size: 28))
+                        .padding(12)
                         .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
                         .padding(16)
                     }
                 }
+                if model.shortcutOverlayVisible {
+                    ShortcutOverlay().transition(.opacity)
+                }
             }
+            .animation(.easeInOut(duration: 0.12), value: model.shortcutOverlayVisible)
             StatusBar(model: model)
         }
         .background(Color.black)
@@ -53,14 +77,15 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
-            Text("Lectern").font(.system(size: 40, weight: .semibold))
-            Text("Drop a PDF here, or open one.").foregroundStyle(.secondary)
+            Text("Lectern").font(.system(size: 44, weight: .semibold))
+            Text("Drop a PDF here, or open one.").font(.system(size: Theme.body)).foregroundStyle(.secondary)
             Button("Open PDF…") { model.openPanel() }
                 .keyboardShortcut("o", modifiers: .command)
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             if !model.recents.urls.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Recent").font(.headline).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Recent").font(.system(size: Theme.body, weight: .semibold)).foregroundStyle(.secondary)
                     ForEach(model.recents.urls, id: \.self) { url in
                         Button {
                             model.open(url: url)
@@ -68,8 +93,8 @@ struct WelcomeView: View {
                             HStack {
                                 Image(systemName: "doc.richtext")
                                 VStack(alignment: .leading) {
-                                    Text(url.lastPathComponent)
-                                    Text(url.deletingLastPathComponent().path).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                                    Text(url.lastPathComponent).font(.system(size: Theme.body))
+                                    Text(url.deletingLastPathComponent().path).font(.system(size: Theme.small)).foregroundStyle(.tertiary).lineLimit(1)
                                 }
                                 Spacer()
                             }
@@ -79,13 +104,13 @@ struct WelcomeView: View {
                         .contextMenu { Button("Remove from Recents") { model.recents.remove(url) } }
                     }
                 }
-                .frame(maxWidth: 480)
+                .frame(maxWidth: 520)
                 .padding()
                 .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
             }
             Spacer()
-            Text("→ / Space next build · ← previous · ⇧→ next frame · ⌥⌘P present · B black · T timer")
-                .font(.caption).foregroundStyle(.tertiary)
+            Text("→ / Space next build · ← previous · ⇧→ next frame · ⌥⌘P present · hold ⌘ for every shortcut")
+                .font(.system(size: Theme.small)).foregroundStyle(.tertiary)
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -93,6 +118,8 @@ struct WelcomeView: View {
 }
 
 /// Current slide left; next preview and notes stacked on the right; both splits draggable and persisted.
+/// Both slide panes start with a title of the same height and pin their slide to the top, so the top edges of
+/// the current and next slides line up (feedback round 1).
 struct PresenterLayout: View {
     let model: AppModel
     let presentation: Presentation
@@ -101,16 +128,16 @@ struct PresenterLayout: View {
 
     var body: some View {
         GeometryReader { geo in
-            HStack(spacing: 0) {
-                CurrentSlidePane(presentation: presentation)
+            HStack(alignment: .top, spacing: 0) {
+                CurrentSlidePane(model: model, presentation: presentation)
                     .frame(width: max(200, geo.size.width * horizontalFraction))
                 SplitHandle(axis: .horizontal) { delta in
                     horizontalFraction = min(0.85, max(0.3, horizontalFraction + delta / geo.size.width))
                 }
                 VStack(spacing: 0) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: Theme.paneSpacing) {
                         PaneTitle(presentation.nextPage == nil ? "Next: end of deck" : "Next")
-                        SurfaceHost(view: presentation.previewSurface.view)
+                        FittedSurface(view: presentation.previewSurface.view, aspect: presentation.nextSlideAspectRatio)
                     }
                     .frame(height: max(120, geo.size.height * verticalFraction))
                     SplitHandle(axis: .vertical) { delta in
@@ -124,27 +151,115 @@ struct PresenterLayout: View {
     }
 }
 
-/// The presenter's current slide with the PREVIEW banner while browsing and the APPENDIX badge (SPEC §4.2, §6.3).
+/// A surface at the largest size with `aspect` that fits its area, pinned to the top and centred horizontally.
+struct FittedSurface: View {
+    let view: SlideSurfaceView
+    let aspect: CGFloat
+
+    var body: some View {
+        GeometryReader { geo in
+            let fitted = Theme.fit(aspect: aspect, in: geo.size)
+            SurfaceHost(view: view)
+                .frame(width: fitted.width, height: fitted.height)
+                .frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+}
+
+/// The presenter's current slide with the PREVIEW banner while browsing and the APPENDIX badge (SPEC §4.2, §6.3),
+/// and the Laser / Pen / Clear buttons directly under it (feedback round 1).
 struct CurrentSlidePane: View {
+    let model: AppModel
+    let presentation: Presentation
+    private let barHeight: CGFloat = 44
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.paneSpacing) {
+            PaneTitle("Current")
+            GeometryReader { geo in
+                let available = CGSize(width: geo.size.width, height: max(1, geo.size.height - barHeight - Theme.paneSpacing))
+                let fitted = Theme.fit(aspect: presentation.currentSlideAspectRatio, in: available)
+                VStack(spacing: Theme.paneSpacing) {
+                    ZStack(alignment: .top) {
+                        SurfaceHost(view: presentation.currentSurface.view)
+                        HStack(alignment: .top) {
+                            if presentation.state.isBrowsing {
+                                Text("PREVIEW: audience sees Frame \(presentation.committedFrame.label)")
+                                    .font(.system(size: Theme.body, weight: .semibold)).padding(8)
+                                    .background(.orange, in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(.black)
+                            }
+                            Spacer()
+                            if presentation.isInAppendix {
+                                Text("APPENDIX")
+                                    .font(.system(size: Theme.small, weight: .heavy)).padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(.purple, in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(.white)
+                            }
+                        }
+                        .padding(8)
+                    }
+                    .frame(width: fitted.width, height: fitted.height)
+                    ModeBar(model: model, presentation: presentation)
+                        .frame(width: fitted.width, height: barHeight)
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+        }
+    }
+}
+
+/// Laser / Pen / Clear, lit when active; the same actions as L, D and E.
+struct ModeBar: View {
+    let model: AppModel
     let presentation: Presentation
 
     var body: some View {
-        ZStack(alignment: .top) {
-            SurfaceHost(view: presentation.currentSurface.view)
-            HStack(alignment: .top) {
-                if presentation.state.isBrowsing {
-                    Text("PREVIEW: audience sees Frame \(presentation.committedFrame.label)")
-                        .font(.headline).padding(8).background(.orange, in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(.black)
-                }
-                Spacer()
-                if presentation.isInAppendix {
-                    Text("APPENDIX")
-                        .font(.caption.weight(.heavy)).padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(.purple, in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(.white)
-                }
+        HStack(spacing: 10) {
+            ModeButton(title: "Laser", key: "L", symbol: "cursorarrow.rays", color: .red, isOn: presentation.pointerMode) {
+                _ = model.perform(.togglePointer)
             }
-            .padding(8)
+            ModeButton(title: "Pen", key: "D", symbol: "pencil.tip", color: .orange, isOn: presentation.drawMode) {
+                _ = model.perform(.toggleDraw)
+            }
+            ModeButton(title: "Clear", key: "E", symbol: "eraser", color: .gray, isOn: false) {
+                _ = model.perform(.command(.clearInk))
+            }
+            Spacer()
+            if presentation.pointerMode {
+                Text("Move the mouse over the slide").font(.system(size: Theme.small)).foregroundStyle(.secondary)
+            } else if presentation.drawMode {
+                Text("Draw on the slide; strokes fade after 3 s").font(.system(size: Theme.small)).foregroundStyle(.secondary)
+            }
         }
+    }
+}
+
+struct ModeButton: View {
+    let title: String
+    let key: String
+    let symbol: String
+    let color: Color
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                Text(title)
+                Text(key)
+                    .font(.system(size: Theme.small, weight: .semibold, design: .rounded))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background((isOn ? Color.black : Color.white).opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+            }
+            .font(.system(size: Theme.body, weight: .semibold))
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(isOn ? color.opacity(0.9) : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .foregroundStyle(isOn ? .black : .white)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title) mode")
+        .accessibilityValue(isOn ? "on" : "off")
     }
 }
 
@@ -152,7 +267,7 @@ struct PaneTitle: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 2)
+        Text(text).font(.system(size: Theme.paneTitle, weight: .medium)).foregroundStyle(.secondary).padding(.horizontal, 2)
     }
 }
 
@@ -167,14 +282,15 @@ struct NotesPane: View {
     var body: some View {
         let page = presentation.state.presenterPage
         let note = presentation.currentNote
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.paneSpacing) {
             HStack {
                 PaneTitle(note.map { "Notes · \($0.source.displayName)" } ?? "Notes")
                 Spacer()
                 if model.notesEditing {
-                    Button("Done") { finishEditing(page: page) }.keyboardShortcut(.defaultAction).controlSize(.small)
+                    Button("Done") { finishEditing(page: page) }.keyboardShortcut(.defaultAction).controlSize(.regular)
                 } else {
-                    Button("Edit (⌘E)") { model.setNotesEditing(true) }.controlSize(.small).buttonStyle(.plain).foregroundStyle(.secondary)
+                    Button("Edit (⌘E)") { model.setNotesEditing(true) }
+                        .buttonStyle(.plain).font(.system(size: Theme.small)).foregroundStyle(.secondary)
                 }
             }
             ZStack {
@@ -201,6 +317,7 @@ struct NotesPane: View {
                     SurfaceHost(view: presentation.notesSurface.view).padding(4)
                 } else {
                     Text("No notes for this frame. ⌘E to write some.")
+                        .font(.system(size: Theme.body))
                         .foregroundStyle(.tertiary).multilineTextAlignment(.center).padding()
                 }
             }
@@ -309,6 +426,7 @@ struct BannerStack: View {
                 .padding(.horizontal, 16)
             }
         }
+        .font(.system(size: Theme.body))
         .padding(.top, 12)
         .animation(.easeInOut(duration: 0.15), value: model.banners)
     }
@@ -331,36 +449,45 @@ struct BannerStack: View {
 }
 
 /// Frame label and total, build x/y, elapsed, wall clock, remaining vs target, audience indicator (SPEC §6.2).
+/// Three fixed regions: frame info on the left, the timer always centred, the audience state on the right, so
+/// nothing shifts as the text on the left changes width (feedback round 1).
 struct StatusBar: View {
     let model: AppModel
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            HStack(spacing: 20) {
+            ZStack {
+                HStack(spacing: 20) {
+                    if let presentation = model.presentation {
+                        let frame = presentation.currentFrame
+                        Text("Frame \(frame.label) / \(presentation.frameCount)")
+                            .font(.system(size: Theme.status, weight: .semibold, design: .rounded))
+                        if frame.buildCount > 1 {
+                            Text("Build \(presentation.currentBuild + 1)/\(frame.buildCount)").foregroundStyle(.secondary)
+                        }
+                        if presentation.isInAppendix {
+                            Text("APPENDIX").font(.system(size: Theme.body, weight: .heavy)).foregroundStyle(.purple)
+                        } else if let left = presentation.mainTalkFramesLeft {
+                            Text("\(left) left").foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Text("No deck open").foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
                 if let presentation = model.presentation {
-                    let frame = presentation.currentFrame
-                    Text("Frame \(frame.label) / \(presentation.frameCount)").font(.system(.title3, design: .rounded).weight(.semibold))
-                    if frame.buildCount > 1 {
-                        Text("Build \(presentation.currentBuild + 1)/\(frame.buildCount)").foregroundStyle(.secondary)
-                    }
-                    if presentation.isInAppendix {
-                        Text("APPENDIX").font(.caption.weight(.heavy)).foregroundStyle(.purple)
-                    } else if let left = presentation.mainTalkFramesLeft {
-                        Text("\(left) left").foregroundStyle(.secondary)
-                    }
-                    Spacer()
                     timerSection(presentation: presentation, now: context.date)
-                    Spacer()
-                    audienceIndicator(presentation: presentation)
                 } else {
-                    Text("No deck open").foregroundStyle(.secondary)
+                    Text(context.date, format: .dateTime.hour().minute()).monospacedDigit().foregroundStyle(.secondary)
+                }
+                HStack {
                     Spacer()
-                    Text(context.date, format: .dateTime.hour().minute()).monospacedDigit()
+                    if let presentation = model.presentation { audienceIndicator(presentation: presentation) }
                 }
             }
-            .font(.system(.title3, design: .rounded))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .font(.system(size: Theme.statusSecondary, design: .rounded))
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
             .background(Color.white.opacity(0.06))
         }
     }
@@ -369,8 +496,9 @@ struct StatusBar: View {
     private func timerSection(presentation: Presentation, now: Date) -> some View {
         let timer = presentation.state.timer
         let elapsed = timer.elapsed(at: now)
-        HStack(spacing: 16) {
+        HStack(spacing: 20) {
             Label(format(elapsed), systemImage: timer.isRunning ? "timer" : "pause.circle")
+                .font(.system(size: Theme.status, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(timer.isRunning ? .primary : .secondary)
             Text(now, format: .dateTime.hour().minute()).monospacedDigit().foregroundStyle(.secondary)
@@ -393,15 +521,13 @@ struct StatusBar: View {
             case .white: return ("WHITE", .red)
             }
         }()
-        return HStack(spacing: 8) {
-            if presentation.pointerMode { Text("POINTER").font(.caption.weight(.bold)).foregroundStyle(.red) }
-            if presentation.drawMode { Text("DRAW").font(.caption.weight(.bold)).foregroundStyle(.orange) }
+        return HStack(spacing: 12) {
             if model.isPresenting && model.displays.assignment.audience == nil {
-                Text("REHEARSAL").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                Text("REHEARSAL").font(.system(size: Theme.small, weight: .bold)).foregroundStyle(.secondary)
             }
             Text(text)
-                .font(.system(.body, design: .rounded).weight(.bold))
-                .padding(.horizontal, 10).padding(.vertical, 4)
+                .font(.system(size: Theme.body, weight: .bold, design: .rounded))
+                .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(color.opacity(0.25), in: Capsule())
                 .foregroundStyle(color)
         }

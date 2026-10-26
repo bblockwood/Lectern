@@ -28,6 +28,14 @@ final class PresenterWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not supported") }
 
+    /// The red button closes the deck and returns to the welcome screen (feedback round 1); closing the welcome
+    /// screen quits.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard model.presentation != nil else { return true }
+        model.close()
+        return false
+    }
+
     func windowWillClose(_ notification: Notification) {
         model.endPresenting()
         NSApp.terminate(nil)
