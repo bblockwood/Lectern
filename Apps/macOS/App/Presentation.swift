@@ -125,6 +125,21 @@ final class Presentation {
         scheduleSidecarSave()
     }
 
+    /// Writes any pending sidecar change now (quit, close). Errors are logged; nothing else to do at that point.
+    func flushSidecar() {
+        guard saveTask != nil else { return }
+        saveTask?.cancel()
+        saveTask = nil
+        do { try SidecarStore.save(sidecar, forDeck: document.url) } catch {
+            log.error("sidecar flush failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    func stopWatching() {
+        watcher?.stop()
+        watcher = nil
+    }
+
     private func scheduleSidecarSave(after delay: TimeInterval = 0.5) {
         saveTask?.cancel()
         let snapshot = sidecar
