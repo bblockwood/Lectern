@@ -149,6 +149,27 @@ private func pixel(_ image: CGImage, x: Int, y: Int) -> (r: UInt8, g: UInt8, b: 
         #expect(store.bytesUsed <= store.budgetBytes)
     }
 
+    @Test func storeEvictsFarthestFromFocusBeforeLeastRecentlyUsed() throws {
+        let doc = try PresentationDocument.load(url: Fixtures.url("basic-169.pdf"))
+        let one = PixelSize(width: 100, height: 100)
+        func render(_ page: Int) -> (RenderRequest, CGImage) {
+            let r = RenderRequest(pageIndex: page, pixelSize: one)
+            return (r, PageRenderer.render(page: doc.source.page(at: page)!, pageSize: doc.pages[page].size, request: r)!)
+        }
+        let (r0, i0) = render(0), (r1, i1) = render(1), (r9, i9) = render(9), (r2, i2) = render(2)
+        let store = ImageStore(budgetBytes: i0.bytesPerRow * i0.height * 3 + 100)   // room for three
+        store.setFocusPages([1])
+        store.insert(i9, for: r9)       // far from focus, but most recently inserted below gets touched
+        store.insert(i0, for: r0)
+        store.insert(i1, for: r1)
+        _ = store.image(for: r9)        // page 9 is now the most recently used
+        store.insert(i2, for: r2)       // over budget: evict the farthest (page 9), not the LRU (page 0)
+        #expect(!store.contains(r9))
+        #expect(store.contains(r0) && store.contains(r1) && store.contains(r2))
+        #expect(store.evictions == 1)
+        #expect(store.recentEvents.last?.kind == .evict)
+    }
+
     @Test func clearForgetsPendingWork() async throws {
         let doc = try PresentationDocument.load(url: Fixtures.url("huge.pdf"))
         let cache = RenderCache(document: doc)

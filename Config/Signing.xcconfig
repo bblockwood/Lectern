@@ -1,0 +1,7 @@
+// Shared by every XcodeGen project in the repo.
+// Defaults: ad-hoc signing so Mac builds run locally and Simulator builds work on a fresh clone.
+CODE_SIGN_IDENTITY = -
+CODE_SIGN_STYLE = Manual
+DEVELOPMENT_TEAM =
+// Ben's gitignored settings override the defaults when present (see README.md).
+#include? "Local.xcconfig"

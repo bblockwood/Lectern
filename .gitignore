@@ -18,6 +18,7 @@ Config/Local.xcconfig
 
 # Info.plists that XcodeGen writes from `info.properties` in a project.yml
 Spikes/**/Info.plist
+Apps/**/Info.plist
 
 # LaTeX build artifacts (outputs *.pdf in Fixtures/ are kept)
 Fixtures/src/*.aux
