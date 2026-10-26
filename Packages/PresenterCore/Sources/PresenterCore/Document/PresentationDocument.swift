@@ -68,6 +68,14 @@ public struct PresentationDocument: Sendable {
         return page > end
     }
 
+    /// A copy with the sidecar's end-of-talk override applied (SPEC §4.2 order: pdfpc metadata still wins).
+    public func overridingEndOfTalk(_ sidecarPage: Int?) -> PresentationDocument {
+        let resolved = EndOfTalk.resolve(pdfpc: pdfpc, sidecar: sidecarPage, outline: outline, frames: frames)
+        guard resolved != endOfTalkPage else { return self }
+        return PresentationDocument(url: url, pages: pages, frames: frames, source: source, title: title, hasPageLabels: hasPageLabels,
+                                    outline: outline, links: links, pdfpc: pdfpc, endOfTalkPage: resolved)
+    }
+
     /// Frames in the main talk (all frames when the end is unknown).
     public var mainTalkFrameCount: Int {
         guard let end = endOfTalkPage else { return frames.frameCount }

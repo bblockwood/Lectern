@@ -14,7 +14,7 @@ struct PresenterRootView: View {
                         OverviewLayout(model: model, presentation: presentation)
                             .id(ObjectIdentifier(presentation))
                     } else {
-                        PresenterLayout(presentation: presentation)
+                        PresenterLayout(model: model, presentation: presentation)
                             .id(ObjectIdentifier(presentation))
                     }
                 } else {
@@ -94,6 +94,7 @@ struct WelcomeView: View {
 
 /// Current slide left; next preview and notes stacked on the right; both splits draggable and persisted.
 struct PresenterLayout: View {
+    let model: AppModel
     let presentation: Presentation
     @AppStorage("layout.horizontalFraction") private var horizontalFraction = 0.68
     @AppStorage("layout.verticalFraction") private var verticalFraction = 0.42
@@ -115,10 +116,7 @@ struct PresenterLayout: View {
                     SplitHandle(axis: .vertical) { delta in
                         verticalFraction = min(0.8, max(0.15, verticalFraction + delta / geo.size.height))
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        PaneTitle("Notes")
-                        NotesPane()
-                    }
+                    NotesPane(model: model, presentation: presentation)
                 }
             }
         }
@@ -158,14 +156,98 @@ struct PaneTitle: View {
     }
 }
 
+/// Notes for the presenter's page (SPEC §5.2): Markdown text from the merged sources, the rendered notes
+/// half of a second-screen deck, or an inline editor that writes to the sidecar.
 struct NotesPane: View {
+    let model: AppModel
+    let presentation: Presentation
+    @State private var draft = ""
+    @State private var editingPage: Int? = nil
+
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.05))
-            Text("Notes arrive in M3 (sidecar, .pdfpc, embedded annotations, second-screen notes).")
-                .foregroundStyle(.tertiary).multilineTextAlignment(.center).padding()
+        let page = presentation.state.presenterPage
+        let note = presentation.currentNote
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                PaneTitle(note.map { "Notes · \($0.source.displayName)" } ?? "Notes")
+                Spacer()
+                if model.notesEditing {
+                    Button("Done") { finishEditing(page: page) }.keyboardShortcut(.defaultAction).controlSize(.small)
+                } else {
+                    Button("Edit (⌘E)") { model.setNotesEditing(true) }.controlSize(.small).buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+            }
+            ZStack {
+                RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.05))
+                if model.notesEditing {
+                    TextEditor(text: $draft)
+                        .font(.system(size: model.notesFontSize))
+                        .scrollContentBackground(.hidden)
+                        .padding(6)
+                        .onAppear { draft = presentation.userNoteText(forPage: page); editingPage = page }
+                        .onChange(of: page) { _, newPage in
+                            if let editingPage { presentation.setUserNote(draft, forPage: editingPage) }
+                            draft = presentation.userNoteText(forPage: newPage)
+                            editingPage = newPage
+                        }
+                        .onDisappear { if let editingPage { presentation.setUserNote(draft, forPage: editingPage) } }
+                } else if let note {
+                    ScrollView {
+                        MarkdownNoteView(text: note.text, fontSize: model.notesFontSize)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                    }
+                } else if presentation.notesSplit != .none {
+                    SurfaceHost(view: presentation.notesSurface.view).padding(4)
+                } else {
+                    Text("No notes for this frame. ⌘E to write some.")
+                        .foregroundStyle(.tertiary).multilineTextAlignment(.center).padding()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .id(model.notesFontTick)
+    }
+
+    private func finishEditing(page: Int) {
+        presentation.setUserNote(draft, forPage: editingPage ?? page)
+        model.setNotesEditing(false)
+    }
+}
+
+/// Paragraphs, bullets and numbered items; inline emphasis and code via Foundation's Markdown parser.
+struct MarkdownNoteView: View {
+    let text: String
+    let fontSize: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: fontSize * 0.5) {
+            ForEach(Array(MarkdownBlocks.parse(text).enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .paragraph(let body):
+                    inline(body)
+                case .bullet(let body, let level):
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("•").padding(.leading, CGFloat(level) * fontSize)
+                        inline(body)
+                    }
+                case .numbered(let body, let number):
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(number).").monospacedDigit()
+                        inline(body)
+                    }
+                }
+            }
+        }
+        .font(.system(size: fontSize))
+        .textSelection(.enabled)
+    }
+
+    private func inline(_ body: String) -> Text {
+        if let attributed = try? AttributedString(markdown: body, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return Text(attributed)
+        }
+        return Text(body)
     }
 }
 
@@ -198,6 +280,19 @@ struct BannerStack: View {
 
     var body: some View {
         VStack(spacing: 6) {
+            if let presentation = model.presentation, let split = presentation.pendingSplitQuestion {
+                HStack(spacing: 12) {
+                    Image(systemName: "rectangle.split.2x1")
+                    Text("This deck looks like Beamer second-screen notes (notes \(split.rawValue)). Show the audience only the slide half?")
+                    Button("Yes, split it") { presentation.answerSplitQuestion(useSplit: true) }
+                    Button("No, full page") { presentation.answerSplitQuestion(useSplit: false) }
+                    Spacer(minLength: 0)
+                }
+                .padding(10)
+                .background(Color.cyan.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 16)
+            }
             ForEach(model.banners) { banner in
                 HStack(spacing: 12) {
                     Image(systemName: icon(for: banner.kind))
@@ -299,6 +394,8 @@ struct StatusBar: View {
             }
         }()
         return HStack(spacing: 8) {
+            if presentation.pointerMode { Text("POINTER").font(.caption.weight(.bold)).foregroundStyle(.red) }
+            if presentation.drawMode { Text("DRAW").font(.caption.weight(.bold)).foregroundStyle(.orange) }
             if model.isPresenting && model.displays.assignment.audience == nil {
                 Text("REHEARSAL").font(.caption.weight(.bold)).foregroundStyle(.secondary)
             }

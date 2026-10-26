@@ -7,13 +7,25 @@ public struct PointerState: Hashable, Sendable {
     public init(position: NormalizedPoint, updatedAt: Date) { self.position = position; self.updatedAt = updatedAt }
 }
 
-/// Minimal stroke model for M1; M3 adds width, colour and persistence (SPEC §8).
-public struct InkStroke: Hashable, Sendable {
+/// A stroke in normalised slide coordinates with its width relative to the slide height (SPEC §8).
+public struct InkStroke: Codable, Hashable, Sendable {
+    public struct Color: Codable, Hashable, Sendable {
+        public var red: Double, green: Double, blue: Double, alpha: Double
+        public init(red: Double, green: Double, blue: Double, alpha: Double = 1) {
+            self.red = red; self.green = green; self.blue = blue; self.alpha = alpha
+        }
+        public static let red = Color(red: 0.9, green: 0.1, blue: 0.1)
+    }
+
     public var points: [NormalizedPoint]
     public var mode: InkMode
     public var startedAt: Date
-    public init(points: [NormalizedPoint], mode: InkMode, startedAt: Date) {
-        self.points = points; self.mode = mode; self.startedAt = startedAt
+    /// Line width as a fraction of the slide height.
+    public var width: Double
+    public var color: Color
+
+    public init(points: [NormalizedPoint], mode: InkMode, startedAt: Date, width: Double = 0.006, color: Color = .red) {
+        self.points = points; self.mode = mode; self.startedAt = startedAt; self.width = width; self.color = color
     }
 }
 

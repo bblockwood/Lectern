@@ -10,8 +10,8 @@ final class SurfaceController {
     var crop: CropRect = .full
     var onGeometryChange: (() -> Void)?
 
-    private let document: PresentationDocument
-    private let cache: RenderCache
+    private(set) var document: PresentationDocument
+    private(set) var cache: RenderCache
     private var desiredPage: Int?
     private var desiredSolid: CGColor?
     private var shown: RenderRequest?
@@ -39,6 +39,25 @@ final class SurfaceController {
     func show(page: Int?) {
         desiredSolid = nil
         desiredPage = page
+        apply(debounce: false)
+    }
+
+    /// Live reload: the old image stays up until the new document's render of the same page is ready (SPEC §6.6).
+    func replace(document: PresentationDocument, cache: RenderCache) {
+        fetch?.cancel()
+        self.document = document
+        self.cache = cache
+        shown = nil
+        fetching = nil
+        apply(debounce: false)
+    }
+
+    /// The crop every request uses (second-screen notes, SPEC §5.1.4).
+    func setCrop(_ newCrop: CropRect) {
+        guard newCrop != crop else { return }
+        crop = newCrop
+        shown = nil
+        fetching = nil
         apply(debounce: false)
     }
 

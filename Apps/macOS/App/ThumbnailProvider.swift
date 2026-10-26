@@ -12,6 +12,10 @@ final class ThumbnailProvider {
     @ObservationIgnored private let cache: RenderCache
     @ObservationIgnored private var inFlight: Set<Int> = []
     private(set) var images: [Int: CGImage] = [:]
+    /// Slide half for second-screen decks; changing it drops the decoded thumbnails.
+    var crop: CropRect = .full {
+        didSet { if crop != oldValue { images.removeAll(); inFlight.removeAll() } }
+    }
 
     init(document: PresentationDocument) {
         self.document = document
@@ -20,7 +24,7 @@ final class ThumbnailProvider {
 
     private func request(forFrame frame: Int) -> RenderRequest {
         let page = document.frames.frames[frame].lastPage
-        return SurfaceSpec(role: .preview, bounds: ThumbnailProvider.bounds).request(for: document.pages[page])
+        return SurfaceSpec(role: .preview, bounds: ThumbnailProvider.bounds, crop: crop).request(for: document.pages[page])
     }
 
     /// Returns the thumbnail if ready; otherwise starts rendering it and returns nil. Views re-render when `images` changes.

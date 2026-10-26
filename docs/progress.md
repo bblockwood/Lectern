@@ -167,3 +167,59 @@ One click there, one keypress back. The same click works on the audience window 
 3. Type `6` then Return from the normal view: jump to frame 6. Type `99` Return: a banner says there is no such frame.
 4. Tab, ⌘F, type `backup`: results listed by frame; ↓ walks them (preview follows), Return commits.
 5. B, W, F during a talk: audience goes black / white / stays frozen while you move on; the status bar shows BLACK, WHITE, FROZEN; pressing the same key again returns to LIVE.
+
+## M3: Mac notes, pointer, live reload (branch `m3-mac-notes`)
+
+Started 2026-10-25.
+
+### Plan
+
+1. **Core, notes and sidecar.** `Sidecar` (versioned JSON `<deck>.lectern.json` next to the PDF, else in Application Support keyed by bookmark; unknown keys tolerated; corrupt files logged and ignored). Notes sources as pure parsers: embedded `/Text` annotations (pdfpc and pdfcomment shapes from `Fixtures/README.md`), the `.pdfpc` JSON file (format 2, legacy `[notes]` fallback), Beamer second-screen split detection by aspect ratio with the slide half as a crop, PowerPoint notes from a `.pptx` (own minimal ZIP reader + `XMLParser`; hidden slides skipped; count mismatch → warning), and `NotesMerger` with the §5.1 priority and frame fallback. Block-level Markdown splitting for the pane. Tests on fixtures 3, 4, 5, a synthetic pptx, and sidecar round-trips.
+2. **Core, live reload.** `DeckWatcher` on the deck directory (DispatchSource), 300 ms debounce, size stabilisation, parse-before-swap; `SessionController.replaceDocument` already restores by (label, build). Tests with a temp copy of fixture 2 replaced atomically.
+3. **App.** Notes pane (Markdown, ⌘+/⌘− persisted, frame fallback, source badge, second-screen notes as a rendered crop, inline editor writing user notes to the sidecar); one-time split confirmation stored in the sidecar; sidecar load/save of settings, notes and last position; live reload with cache rebuild and image swap only when ready; pointer (L) with glow and trail on the audience and presenter surfaces, hidden after 2 s; ephemeral mouse ink (D/E) mirrored as vectors; banners for reload and split confirmation.
+4. **Acceptance.** Notes checks on fixtures 3, 4, 5 (and the synthetic pptx until Ben's fixture 9 arrives) in tests and the self-test; a self-test that recompiles fixture 2 mid-run (`make -C Fixtures overlays.pdf` after touching the source) and confirms the position survives.
+
+### M3 report (2026-10-25)
+
+**Done**
+
+- Sidecar (`<deck>.lectern.json`, SPEC §3.4): versioned, unknown keys ignored, missing keys defaulted, corrupt files logged and skipped, written atomically beside the deck or in `~/Library/Application Support/Lectern/Sidecars/` when the directory is read-only. Holds user notes (frame label + page), split decision, target duration, end-of-talk override, persistent ink and whiteboard schema (UI in M5), last position (restored on open) and rehearsal logs (M6).
+- Notes sources (§5.1) with the merge order sidecar > `.pdfpc` > embedded > PowerPoint, and frame fallback for builds without notes: embedded `/Text` annotations (pdfpc's hidden zero-rect ones and pdfcomment's; FreeText and markup are never notes), the `.pdfpc` JSON file (format 2, pdfpc's label+overlay-then-idx matching, `endSlide` 0-based, legacy `[notes]`/`### N` fallback), Beamer second-screen decks detected by aspect ratio with pdfpc's `NotesPosition` as a hint, confirmed once per deck by a banner and stored in the sidecar, after which the audience, presenter and thumbnails use the slide half and the notes pane shows the notes half rendered; PowerPoint notes from a `.pptx` beside the PDF through an own ZIP reader (stored and deflated entries) and `XMLParser`, with `sldIdLst` order, `show="0"` skipped, body placeholder text, and a warning instead of a mapping when counts differ.
+- Notes pane: Markdown (paragraphs with line breaks, bullets, numbered items, inline emphasis and code), ⌘+/⌘− font size persisted per device, source badge, ⌘E inline editor writing user notes to the sidecar (switching pages while editing saves the draft).
+- Pointer (§6.4): L toggles; moving over the presenter's current slide or the audience window places a red dot (1.2 % of slide height, soft glow) on both surfaces with a 300 ms fading trail; it hides after 2 s or on leaving.
+- Ephemeral ink (§8, basic Mac version): D toggles draw mode with a crosshair cursor, mouse drags on the current slide become strokes in normalised coordinates mirrored on the audience as vectors, fading out over the last second of a 3 s life; E clears. `InkStroke` now carries width and colour and is Codable for the sidecar.
+- Live reload (§6.6): `DeckWatcher` watches the deck's directory and the PDF (atomic replace, in-place write, companions), debounces 300 ms, waits for sizes to settle, then the new PDF is parsed off the main thread; on success caches are rebuilt, the position is restored by (frame label, build) with nearest-page fallback, and the audience keeps the old image until the new render of the same page is ready; on failure the old deck stays with a banner and the next change retries. Sidecar, `.pdfpc` and `.pptx` changes reload notes without touching the deck. Presentation ▸ Reload Deck Now (⌘R) forces it.
+- Target duration seeds from the sidecar, then pdfpc XMP, then the `.pdfpc` file; the status bar shows the remaining time with the pace colour.
+
+**Acceptance**
+
+- *Notes appear correctly for fixtures 3, 4, 5 (and 9).* Unit tests cover every source and the merge order; `Lectern -selftest Fixtures/pdfpc-notes.pdf 1 -notes` prints the merged note per page through the app (page 2 from the `.pdfpc` file overriding the embedded one, page 5 build-specific, page 10 sidecar-only, the rest embedded), the same for `pdfcomment-notes.pdf` (pages 1–5 notes, FreeText page 6 none), and `notes-right.pdf` reports the pending split question. Fixture 9 is not here yet; the synthetic `.pptx` in `PPTXTests` stands in (three slides, one hidden, notes on two) and `fixtureNineWhenPresent` will run against Ben's file automatically.
+- *Recompiling fixture 2 mid-talk keeps the position.* `Lectern -selftest Fixtures/basic-169.pdf 1 -reload` copies `overlays.pdf` to a temp deck, goes to frame 3 build 2, then replaces the file atomically three times:
+
+```
+RELOAD step 1 OK: was frame 3 build 2; now page 4 of 11 (frame 3 build 2); notice: Deck reloaded: 11 pages, 8 frames. Position kept at frame 3.
+RELOAD step 2 OK: malformed replacement ignored, still 11 pages at page 4; notice: The recompiled PDF could not be read; keeping the previous version. It will be retried on the next change.
+RELOAD step 3 OK: back to 23 pages at page 6
+```
+
+- Pointer and ink through the surface's mouse handlers (`-ink`): pointer shown, one 21-point stroke mirrored on the audience as one shape layer, strokes gone after 3.5 s; screenshots show the dot and the stroke on both the presenter and the audience surfaces.
+
+**Known issues**
+
+- Second-screen decks still group frames by page labels, which Beamer gets wrong for them (`docs/decisions.md`); `notes-right.pdf` shows 3 frames for 5. Until a better signal exists, those decks are best navigated by page (→/←). Ben's real decks will tell whether this matters.
+- Links are not activated in split mode (their rects would need remapping to the crop).
+- The notes editor edits the sidecar note only; it cannot edit `.pdfpc` or embedded notes in place (they are overridden instead, which is what §5.1 asks).
+- Persistent ink and whiteboards are stored in the sidecar schema but have no UI until M5.
+- Pointer trail dots are removed by a 350 ms timer; under heavy mouse movement that is a few dozen tiny layers, fine in practice.
+- Sidecar writes are debounced (0.5 s for edits, 2 s for position); quitting within that window can lose the last change. A flush on quit is a quick follow-up.
+- DeckWatcher's own sidecar writes trigger a directory event; the reload path compares the file with the in-memory sidecar and ignores it, so no loop, but there is one redundant read per save.
+
+**Ben device checklist (M3, no new hardware)**
+
+1. Open `Fixtures/pdfpc-notes.pdf`: the notes pane shows a note per page with a source badge (page 2 says `.pdfpc file`). Press ⌘E, type a note, press Done: `Fixtures/pdfpc-notes.lectern.json` appears next to the PDF with your text, and the badge reads "your notes".
+2. Open `Fixtures/notes-right.pdf`: a cyan banner asks whether to split; answer Yes. The current slide and the audience show only the left half, the notes pane shows the right half. Reopen the deck: no question, the answer stuck.
+3. Live reload: present `Fixtures/overlays.pdf`, go to frame 3 build 2, then in another terminal run `touch Fixtures/src/overlays.tex && make -C Fixtures overlays.pdf`. Within a second of latexmk finishing, a banner says "Deck reloaded" and the audience still shows frame 3 build 2 with no flash. Then run `cp Fixtures/malformed.pdf Fixtures/overlays.pdf` (restore with `git checkout Fixtures/overlays.pdf` afterwards, which also triggers a reload): the talk continues on the old deck with an orange banner.
+4. Pointer: press L, move the mouse over the current slide: a red dot with a trail follows on the projector and hides two seconds after you stop. Move the mouse over the projector window directly: same.
+5. Ink: press D and draw on the current slide with the mouse: the stroke appears on the projector at the same place and fades after three seconds; E clears; D again leaves draw mode.
+6. ⌘+ and ⌘− change the notes size and the size survives a relaunch.
+7. **Then use it for a real talk** (SPEC M3 → M4 gate) and collect issues: `docs/issues.md` is a good place; I will triage them before M4.
