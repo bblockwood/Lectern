@@ -1,5 +1,5 @@
-// Copy to Config/Local.xcconfig (gitignored) and fill in your Apple Developer team ID.
-// Find it at https://developer.apple.com/account under Membership details,
-// or in Xcode: Settings > Accounts > your Apple ID > team > "Team ID".
+// Copy to Config/Local.xcconfig (gitignored) and fill in your Apple Developer Team ID.
+// Find it in Xcode: Settings > Accounts > your Apple ID > select the team; the Team ID is shown on the right.
+// Or at https://developer.apple.com/account under Membership details.
 DEVELOPMENT_TEAM = XXXXXXXXXX
 CODE_SIGN_STYLE = Automatic
