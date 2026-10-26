@@ -29,9 +29,22 @@ public enum PageRenderer {
         ctx.setAllowsFontSmoothing(true)
         ctx.setShouldSmoothFonts(true)
         ctx.saveGState()
-        ctx.concatenate(page.getDrawingTransform(.cropBox, rect: target, rotate: 0, preserveAspectRatio: true))
+        ctx.concatenate(PageRenderer.transform(of: page, onto: target))
         ctx.drawPDFPage(page)
         ctx.restoreGState()
         return ctx.makeImage()
+    }
+
+    /// Maps the page's rotated crop box exactly onto `rect`.
+    ///
+    /// `CGPDFPageGetDrawingTransform` only ever scales a page *down* into the rect it is given (CGPDFPage.h: "scale
+    /// the rect down, if necessary"), so asking it for `rect` directly draws the page at its native point size,
+    /// centred, whenever the bitmap is larger than the page, which on a projector is always. Ask it for the unit
+    /// square instead, where scaling down is guaranteed and /Rotate is still honoured, then stretch the unit square
+    /// onto `rect` ourselves. `Links.swift` uses the same unit-square mapping, so link rects stay consistent with pixels.
+    static func transform(of page: CGPDFPage, onto rect: CGRect) -> CGAffineTransform {
+        let toUnit = page.getDrawingTransform(.cropBox, rect: CGRect(x: 0, y: 0, width: 1, height: 1), rotate: 0, preserveAspectRatio: false)
+        let unitToRect = CGAffineTransform(translationX: rect.minX, y: rect.minY).scaledBy(x: rect.width, y: rect.height)
+        return toUnit.concatenating(unitToRect)
     }
 }

@@ -38,3 +38,4 @@ Fixtures/src/build/
 
 # macOS
 .DS_Store
+Fixtures/*.lectern.json
