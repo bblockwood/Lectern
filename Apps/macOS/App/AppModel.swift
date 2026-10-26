@@ -61,10 +61,12 @@ final class AppModel {
     var overviewColumns = 4
     /// Inline notes editor open (SPEC §5.2).
     private(set) var notesEditing = false
+    /// The hold-⌘ shortcut reference card (feedback round 1).
+    private(set) var shortcutOverlayVisible = false
     /// Notes font size in points, persisted per device (SPEC §5.2).
     var notesFontSize: Double {
-        get { UserDefaults.standard.object(forKey: "notesFontSize") as? Double ?? 18 }
-        set { UserDefaults.standard.set(min(48, max(10, newValue)), forKey: "notesFontSize"); notesFontTick += 1 }
+        get { UserDefaults.standard.object(forKey: AppSettings.notesFontSizeKey) as? Double ?? Theme.notesDefault }
+        set { UserDefaults.standard.set(min(48, max(10, newValue)), forKey: AppSettings.notesFontSizeKey) }
     }
     private(set) var notesFontTick = 0
     let recents = RecentsStore()
@@ -75,16 +77,28 @@ final class AppModel {
     @ObservationIgnored private var escapeArmedUntil: Date?
     @ObservationIgnored private var audienceDisplayLostBanner: Banner?
     @ObservationIgnored private var jumpBufferTimeout: Task<Void, Never>?
+    @ObservationIgnored private var settingsWindow: SettingsWindowController?
+    @ObservationIgnored private var settingsObserver: NSObjectProtocol?
+    @ObservationIgnored private var observedNotesFontSize: Double = 0
     @ObservationIgnored private let log = Logger(subsystem: "dev.lectern", category: "app")
 
     /// SPEC §4.3: URI links are ignored unless this is on (`defaults write dev.lectern.mac LecternOpenURILinks -bool YES`).
-    var opensURILinks: Bool { UserDefaults.standard.bool(forKey: "LecternOpenURILinks") }
+    var opensURILinks: Bool { UserDefaults.standard.bool(forKey: AppSettings.opensURILinksKey) }
 
     /// Surround colour for letterboxing (SPEC §3.3; default black).
     var surroundColor: CGColor = CGColor(gray: 0, alpha: 1)
 
     init() {
         displays.onChange = { [weak self] in self?.displaysChanged() }
+        // The notes size can change from ⌘+/⌘− or from the Settings window; either way the notes pane re-reads it.
+        observedNotesFontSize = notesFontSize
+        settingsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.notesFontSize != self.observedNotesFontSize else { return }
+                self.observedNotesFontSize = self.notesFontSize
+                self.notesFontTick += 1
+            }
+        }
     }
 
     // MARK: - Documents
@@ -342,6 +356,17 @@ final class AppModel {
         if alert.runModal() == .alertFirstButtonReturn, let minutes = Int(field.stringValue), minutes > 0 {
             setTargetDuration(TimeInterval(minutes * 60))
         }
+    }
+
+    func setShortcutOverlay(visible: Bool) {
+        guard visible != shortcutOverlayVisible else { return }
+        shortcutOverlayVisible = visible
+    }
+
+    func showSettings() {
+        let controller = settingsWindow ?? SettingsWindowController()
+        settingsWindow = controller
+        controller.show()
     }
 
     // MARK: - Presenting

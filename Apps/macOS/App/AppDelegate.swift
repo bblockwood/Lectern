@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private(set) var model: AppModel!
     private var presenterWindow: PresenterWindowController!
     private var keyMonitor: Any?
+    private var flagsMonitor: Any?
+    private var shortcutOverlayTask: Task<Void, Never>?
     private var selfTest: SelfTest?
     private var recentsMenu: NSMenu?
 
@@ -22,8 +24,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         presenterWindow = PresenterWindowController(model: model)
         presenterWindow.showWindow(nil)
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
-            guard let self, self.handle(keyEvent: event) else { return event }
-            return nil
+            guard let self else { return event }
+            self.hideShortcutOverlay()
+            return self.handle(keyEvent: event) ? nil : event
+        }
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+            self?.modifiersChanged(event)
+            return event
         }
         NSApp.activate()
 
@@ -48,18 +55,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Keyboard
 
-    /// Every key press in the app goes through `KeyMap`; text editing keeps its keys (M2 jump field, M3 notes editor).
+    /// Every key press in the presenter window goes through `KeyMap`. Other windows (Settings) keep their keys,
+    /// as does text editing (M2 jump field, M3 notes editor). The audience window cannot become key.
     private func handle(keyEvent event: NSEvent) -> Bool {
-        if let responder = NSApp.keyWindow?.firstResponder, responder is NSTextView { return false }
+        if let keyWindow = NSApp.keyWindow {
+            guard keyWindow is PresenterWindow else { return false }
+            if keyWindow.firstResponder is NSTextView { return false }
+        }
         guard let action = KeyMap.action(for: event) else { return false }
         Latency.shared.inputReceived(at: event.timestamp)
         return model.perform(action)
     }
 
+    /// Holding ⌘ on its own for a moment shows the shortcut overlay (feedback round 1). Releasing it, adding another
+    /// modifier or pressing any key hides it, so ⌘-shortcuts themselves never flash it.
+    private func modifiersChanged(_ event: NSEvent) {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
+        let presenterIsKey = NSApp.keyWindow == nil || NSApp.keyWindow is PresenterWindow
+        guard flags == [.command], presenterIsKey, model.presentation != nil, AppSettings.showsShortcutOverlay else {
+            hideShortcutOverlay()
+            return
+        }
+        shortcutOverlayTask?.cancel()
+        shortcutOverlayTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled, let self else { return }
+            self.model.setShortcutOverlay(visible: true)
+        }
+    }
+
+    private func hideShortcutOverlay() {
+        shortcutOverlayTask?.cancel()
+        shortcutOverlayTask = nil
+        if model.shortcutOverlayVisible { model.setShortcutOverlay(visible: false) }
+    }
+
     // MARK: - Menu actions
 
     @objc func openDocument(_ sender: Any?) { model.openPanel() }
-    @objc func closeDocument(_ sender: Any?) { model.close() }
+    @objc func showSettings(_ sender: Any?) { model.showSettings() }
+    /// ⌘W closes whichever window is key (Settings), else the deck.
+    @objc func closeDocument(_ sender: Any?) {
+        if let keyWindow = NSApp.keyWindow, !(keyWindow is PresenterWindow) { keyWindow.performClose(sender); return }
+        model.close()
+    }
     @objc func startPresenting(_ sender: Any?) { model.startPresenting() }
     @objc func endPresenting(_ sender: Any?) { model.endPresenting() }
     @objc func swapDisplays(_ sender: Any?) { model.swapDisplays() }
@@ -135,7 +174,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case #selector(editNotes(_:)):
             item.state = model.notesEditing ? .on : .off
             return model.presentation != nil
-        case #selector(closeDocument(_:)), #selector(nextBuild(_:)), #selector(previousBuild(_:)), #selector(nextFrame(_:)),
+        case #selector(closeDocument(_:)):
+            let otherWindowIsKey = NSApp.keyWindow.map { !($0 is PresenterWindow) } ?? false
+            return model.presentation != nil || otherWindowIsKey
+        case #selector(nextBuild(_:)), #selector(previousBuild(_:)), #selector(nextFrame(_:)),
              #selector(previousFrame(_:)), #selector(goBack(_:)), #selector(toggleBlack(_:)), #selector(toggleWhite(_:)),
              #selector(toggleFreeze(_:)), #selector(toggleTimer(_:)), #selector(resetTimer(_:)), #selector(clearInk(_:)),
              #selector(notesLarger(_:)), #selector(notesSmaller(_:)), #selector(reloadDeck(_:)):

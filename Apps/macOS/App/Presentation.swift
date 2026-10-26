@@ -93,8 +93,21 @@ final class Presentation {
     }
 
     func apply(_ command: Command) {
+        controller.navigationOptions = AppSettings.navigationOptions
         controller.apply(command)
         Latency.shared.commandApplied()
+    }
+
+    // MARK: - Geometry for the chrome
+
+    /// Aspect ratio of what the current-slide pane shows: the presenter page, cropped for second-screen decks.
+    var currentSlideAspectRatio: CGFloat { slideAspectRatio(ofPage: state.presenterPage) }
+    var nextSlideAspectRatio: CGFloat { slideAspectRatio(ofPage: nextPage ?? state.presenterPage) }
+
+    private func slideAspectRatio(ofPage page: Int) -> CGFloat {
+        let crop = notesSplit.slideCrop
+        let pageAspect = document.pages.indices.contains(page) ? document.pages[page].aspectRatio : 16.0 / 9.0
+        return crop.height > 0 ? pageAspect * CGFloat(crop.width / crop.height) : pageAspect
     }
 
     // MARK: - Notes and sidecar (SPEC §3.4, §5)

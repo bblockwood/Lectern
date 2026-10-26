@@ -10,6 +10,8 @@ enum MainMenu {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Lectern", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
+        appMenu.addItem(item("Settings…", #selector(AppDelegate.showSettings(_:)), ",", target))
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Lectern", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Lectern", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

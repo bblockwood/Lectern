@@ -10,12 +10,13 @@ struct OverviewLayout: View {
     var body: some View {
         GeometryReader { geo in
             HStack(spacing: 8) {
-                CurrentSlidePane(presentation: presentation)
+                CurrentSlidePane(model: model, presentation: presentation)
                     .frame(width: max(240, geo.size.width * 0.36))
                 OverviewPanel(model: model, presentation: presentation)
             }
         }
         .padding(8)
+        .font(.system(size: Theme.body))
     }
 }
 
@@ -48,7 +49,7 @@ struct OverviewPanel: View {
                         .onKeyPress(.upArrow) { moveHit(-1); return .handled }
                         .onKeyPress(.escape) { searchFocused = false; return .handled }
                     if !query.isEmpty {
-                        Text(hits.isEmpty ? "no matches" : "\(hits.count) matches").foregroundStyle(.secondary).font(.caption)
+                        Text(hits.isEmpty ? "no matches" : "\(hits.count) matches").foregroundStyle(.secondary).font(.system(size: Theme.small))
                         Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary)
                     }
                 }
@@ -150,7 +151,7 @@ struct SearchResults: View {
                     ForEach(Array(hits.enumerated()), id: \.element.id) { index, hit in
                         let frame = frames.frames[hit.frameIndex]
                         HStack(alignment: .top, spacing: 8) {
-                            Text("Frame \(frame.label)").font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 70, alignment: .leading)
+                            Text("Frame \(frame.label)").font(.system(size: Theme.small, weight: .semibold)).foregroundStyle(.secondary).frame(width: 70, alignment: .leading)
                             Text(hit.snippet).lineLimit(2)
                             Spacer(minLength: 0)
                         }
@@ -226,9 +227,9 @@ struct FrameCell: View {
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(isSelected ? Color.accentColor : (isCommitted ? .green : .clear), lineWidth: 3))
             .clipShape(RoundedRectangle(cornerRadius: 4))
             HStack(spacing: 6) {
-                Text(frame.label).font(.caption.weight(.semibold))
-                if frame.buildCount > 1 { Text("\(frame.buildCount) builds").font(.caption2).foregroundStyle(.secondary) }
-                if isAppendix { Text("A").font(.caption2.weight(.heavy)).foregroundStyle(.purple) }
+                Text(frame.label).font(.system(size: Theme.small, weight: .semibold))
+                if frame.buildCount > 1 { Text("\(frame.buildCount) builds").font(.system(size: Theme.small - 2)).foregroundStyle(.secondary) }
+                if isAppendix { Text("A").font(.system(size: Theme.small - 2, weight: .heavy)).foregroundStyle(.purple) }
                 Spacer(minLength: 0)
             }
         }
