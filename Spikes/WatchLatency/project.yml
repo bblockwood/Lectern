@@ -1,0 +1,79 @@
+# Spike B: Watch latency. Throwaway; see docs/spikes/B-watch-latency.md.
+# Regenerate with `xcodegen generate` in this directory.
+name: WatchLatency
+options:
+  bundleIdPrefix: dev.lectern.spike
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  deploymentTarget:
+    macOS: "26.0"
+    iOS: "26.0"
+    watchOS: "26.0"
+# Signing.xcconfig optionally includes ../../Config/Local.xcconfig (DEVELOPMENT_TEAM).
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    CODE_SIGN_STYLE: Automatic
+targets:
+  SpikeWatchHost:
+    type: application
+    platform: macOS
+    sources: [Shared, SharedNetwork, Host]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lectern.spike.watchlatency.host
+        PRODUCT_NAME: SpikeWatchHost
+        ENABLE_HARDENED_RUNTIME: NO
+    info:
+      path: Host/Info.plist
+      properties:
+        CFBundleDisplayName: Lectern Spike Host
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSBluetoothAlwaysUsageDescription: Spike B advertises a Bluetooth LE service so the Watch can measure round-trip latency.
+        NSLocalNetworkUsageDescription: Spike B advertises a Bonjour service so the iPhone relay can find this Mac.
+        NSBonjourServices: [_lectern-spike._tcp]
+        NSPrincipalClass: NSApplication
+  SpikeWatchRelay:
+    type: application
+    platform: iOS
+    sources: [Shared, SharedNetwork, Relay]
+    dependencies:
+      - target: SpikeWatchRemote
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lectern.spike.watchlatency
+        PRODUCT_NAME: SpikeWatchRelay
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+    info:
+      path: Relay/Info.plist
+      properties:
+        CFBundleDisplayName: Lectern Spike Relay
+        UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: Spike B looks for the Lectern Spike Host on the local network and relays Watch messages to it.
+        NSBonjourServices: [_lectern-spike._tcp]
+  SpikeWatchRemote:
+    type: application
+    platform: watchOS
+    sources: [Shared, Remote]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lectern.spike.watchlatency.watchkitapp
+        PRODUCT_NAME: SpikeWatchRemote
+        SKIP_INSTALL: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+    info:
+      path: Remote/Info.plist
+      properties:
+        CFBundleDisplayName: Lectern Spike
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: dev.lectern.spike.watchlatency
+        WKRunsIndependentlyOfCompanionApp: false
+        NSBluetoothAlwaysUsageDescription: Spike B connects to the Lectern Spike Host over Bluetooth LE to measure round-trip latency.
