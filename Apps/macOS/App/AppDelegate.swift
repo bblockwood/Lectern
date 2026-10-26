@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         model.endPresenting()
+        model.presentation?.flushSidecar()
     }
 
     // MARK: - Keyboard

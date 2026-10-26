@@ -95,6 +95,8 @@ final class AppModel {
             endPresenting()
             overviewVisible = false
             jumpBuffer = ""
+            presentation?.flushSidecar()
+            presentation?.stopWatching()
             let presentation = Presentation(document: document, surroundColor: surroundColor)
             self.presentation = presentation
             notesEditing = false
@@ -125,6 +127,8 @@ final class AppModel {
         endPresenting()
         overviewVisible = false
         jumpBuffer = ""
+        presentation?.flushSidecar()
+        presentation?.stopWatching()
         presentation = nil
     }
 
