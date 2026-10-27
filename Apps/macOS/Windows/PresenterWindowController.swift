@@ -18,6 +18,7 @@ final class PresenterWindowController: NSWindowController, NSWindowDelegate {
         window.backgroundColor = .black
         window.title = "Lectern"
         window.setFrameAutosaveName("PresenterWindow")
+        window.collectionBehavior.insert(.fullScreenPrimary)
         window.center()
         super.init(window: window)
         window.delegate = self

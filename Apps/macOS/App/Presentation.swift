@@ -366,11 +366,6 @@ final class Presentation {
     var frameCount: Int { document.frames.frameCount }
     var committedFrame: Frame { document.frames.frame(containing: state.committedPage) }
     var isInAppendix: Bool { document.isAppendix(page: state.presenterPage) }
-    /// Main-talk frames still to come after the presenter's current frame, nil when the end is unknown.
-    var mainTalkFramesLeft: Int? {
-        guard document.endOfTalkPage != nil else { return nil }
-        return max(0, document.mainTalkFrameCount - (currentFrame.index + 1))
-    }
     var nextPage: Int? {
         let next = state.presenterPage + 1
         return next < document.pageCount ? next : nil

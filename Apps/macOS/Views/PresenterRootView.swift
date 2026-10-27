@@ -13,6 +13,8 @@ enum Theme {
     static let small: CGFloat = 14
     static let notesDefault: Double = 22
     static let paneSpacing: CGFloat = 6
+    /// Pane headers have one fixed height so their buttons never move the titles (feedback round 2).
+    static let paneHeader: CGFloat = 26
 
     /// Largest size with `aspect` (width / height) that fits in `bounds`.
     static func fit(aspect: CGFloat, in bounds: CGSize) -> CGSize {
@@ -54,13 +56,16 @@ struct PresenterRootView: View {
                         .padding(16)
                     }
                 }
-                if model.shortcutOverlayVisible {
-                    ShortcutOverlay().transition(.opacity)
-                }
             }
-            .animation(.easeInOut(duration: 0.12), value: model.shortcutOverlayVisible)
             StatusBar(model: model)
         }
+        // The shortcut card covers the status bar too, so a click anywhere outside it closes it.
+        .overlay {
+            if model.shortcutOverlayVisible {
+                ShortcutOverlay(model: model).transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.12), value: model.shortcutOverlayVisible)
         .background(Color.black)
         .preferredColorScheme(.dark)
         .dropDestination(for: URL.self) { urls, _ in
@@ -109,7 +114,7 @@ struct WelcomeView: View {
                 .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
             }
             Spacer()
-            Text("→ / Space next build · ← previous · ⇧→ next frame · ⌥⌘P present · hold ⌘ for every shortcut")
+            Text("→ / Space / click next build · ← previous · ⇧→ next frame · ⌥⌘P present · tap ⌘ for every shortcut")
                 .font(.system(size: Theme.small)).foregroundStyle(.tertiary)
                 .padding(.bottom, 12)
         }
@@ -167,7 +172,7 @@ struct FittedSurface: View {
 }
 
 /// The presenter's current slide with the PREVIEW banner while browsing and the APPENDIX badge (SPEC §4.2, §6.3),
-/// and the Laser / Pen / Clear buttons directly under it (feedback round 1).
+/// and the Laser / Draw / Clear buttons directly under it (feedback round 1).
 struct CurrentSlidePane: View {
     let model: AppModel
     let presentation: Presentation
@@ -196,6 +201,7 @@ struct CurrentSlidePane: View {
                             }
                         }
                         .padding(8)
+                        .allowsHitTesting(false)
                     }
                     .frame(width: fitted.width, height: fitted.height)
                     ModeBar(model: model, presentation: presentation)
@@ -207,28 +213,46 @@ struct CurrentSlidePane: View {
     }
 }
 
-/// Laser / Pen / Clear, lit when active; the same actions as L, D and E.
+/// Laser / Draw / Clear, lit when active; the same actions as L, D and C. Each label starts with its key
+/// (feedback round 2).
 struct ModeBar: View {
     let model: AppModel
     let presentation: Presentation
 
     var body: some View {
-        HStack(spacing: 10) {
-            ModeButton(title: "Laser", key: "L", symbol: "cursorarrow.rays", color: .red, isOn: presentation.pointerMode) {
-                _ = model.perform(.togglePointer)
+        // The hint only appears when the row has room for it (the overview's current pane is narrow).
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                buttons
+                Spacer(minLength: 16)
+                hint.lineLimit(1).fixedSize()
             }
-            ModeButton(title: "Pen", key: "D", symbol: "pencil.tip", color: .orange, isOn: presentation.drawMode) {
-                _ = model.perform(.toggleDraw)
+            HStack(spacing: 10) {
+                buttons
+                Spacer(minLength: 0)
             }
-            ModeButton(title: "Clear", key: "E", symbol: "eraser", color: .gray, isOn: false) {
-                _ = model.perform(.command(.clearInk))
-            }
-            Spacer()
-            if presentation.pointerMode {
-                Text("Move the mouse over the slide").font(.system(size: Theme.small)).foregroundStyle(.secondary)
-            } else if presentation.drawMode {
-                Text("Draw on the slide; strokes fade after 3 s").font(.system(size: Theme.small)).foregroundStyle(.secondary)
-            }
+        }
+    }
+
+    @ViewBuilder private var buttons: some View {
+        ModeButton(title: "Laser", key: "L", symbol: "cursorarrow.rays", color: .red, isOn: presentation.pointerMode) {
+            _ = model.perform(.togglePointer)
+        }
+        ModeButton(title: "Draw", key: "D", symbol: "pencil.tip", color: .orange, isOn: presentation.drawMode) {
+            _ = model.perform(.toggleDraw)
+        }
+        ModeButton(title: "Clear", key: "C", symbol: "eraser", color: .gray, isOn: false) {
+            _ = model.perform(.command(.clearInk))
+        }
+    }
+
+    @ViewBuilder private var hint: some View {
+        if presentation.pointerMode {
+            Text("Move the mouse over the slide").font(.system(size: Theme.small)).foregroundStyle(.secondary)
+        } else if presentation.drawMode {
+            Text("Draw on the slide; strokes fade after 3 s").font(.system(size: Theme.small)).foregroundStyle(.secondary)
+        } else {
+            Text("Click the slide for the next build").font(.system(size: Theme.small)).foregroundStyle(.tertiary)
         }
     }
 }
@@ -245,7 +269,7 @@ struct ModeButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: symbol)
-                Text(title)
+                Text(title).fixedSize()
                 Text(key)
                     .font(.system(size: Theme.small, weight: .semibold, design: .rounded))
                     .padding(.horizontal, 6).padding(.vertical, 2)
@@ -271,28 +295,69 @@ struct PaneTitle: View {
     }
 }
 
+/// A clickable pane heading: the active one is bright with an underline (Notes / Contents, feedback round 2).
+struct PaneTab: View {
+    let text: String
+    let active: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(text)
+                .font(.system(size: Theme.paneTitle, weight: .medium))
+                .foregroundStyle(active ? Color.primary : Color.secondary)
+                .padding(.horizontal, 2)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(active ? Color.accentColor : .clear).frame(height: 2).offset(y: 5)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+    }
+}
+
 /// Notes for the presenter's page (SPEC §5.2): Markdown text from the merged sources, the rendered notes
-/// half of a second-screen deck, or an inline editor that writes to the sidecar.
+/// half of a second-screen deck, or an inline editor that writes to the sidecar. The pane doubles as the table
+/// of contents (feedback round 2): the Contents heading switches to the PDF outline with the current part
+/// highlighted, and a frame without notes shows the contents on its own.
 struct NotesPane: View {
     let model: AppModel
     let presentation: Presentation
     @State private var draft = ""
     @State private var editingPage: Int? = nil
+    @AppStorage("notes.showsContents") private var showsContents = false
 
     var body: some View {
         let page = presentation.state.presenterPage
         let note = presentation.currentNote
+        let outline = presentation.document.outline
+        let noteAvailable = note != nil || presentation.notesSplit != .none
+        let contentsShown = !model.notesEditing && !outline.isEmpty && (showsContents || !noteAvailable)
         VStack(alignment: .leading, spacing: Theme.paneSpacing) {
-            HStack {
-                PaneTitle(note.map { "Notes · \($0.source.displayName)" } ?? "Notes")
+            HStack(spacing: 14) {
+                PaneTab(text: "Notes", active: !contentsShown) {
+                    showsContents = false
+                    if !noteAvailable, !model.notesEditing { model.setNotesEditing(true) }
+                }
+                if !outline.isEmpty {
+                    PaneTab(text: "Contents", active: contentsShown) {
+                        if model.notesEditing { finishEditing(page: page) }
+                        showsContents = true
+                    }
+                }
                 Spacer()
                 if model.notesEditing {
-                    Button("Done") { finishEditing(page: page) }.keyboardShortcut(.defaultAction).controlSize(.regular)
-                } else {
+                    Button("Done") { finishEditing(page: page) }.keyboardShortcut(.defaultAction).controlSize(.small)
+                } else if !contentsShown {
+                    if let source = note?.source {
+                        Text("from \(source.displayName)").font(.system(size: Theme.small)).foregroundStyle(.tertiary)
+                    }
                     Button("Edit (⌘E)") { model.setNotesEditing(true) }
                         .buttonStyle(.plain).font(.system(size: Theme.small)).foregroundStyle(.secondary)
                 }
             }
+            .frame(height: Theme.paneHeader)
             ZStack {
                 RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.05))
                 if model.notesEditing {
@@ -307,6 +372,12 @@ struct NotesPane: View {
                             editingPage = newPage
                         }
                         .onDisappear { if let editingPage { presentation.setUserNote(draft, forPage: editingPage) } }
+                } else if contentsShown {
+                    OutlineList(outline: outline, frames: presentation.document.frames, currentPage: page,
+                                fontSize: CGFloat(model.notesFontSize) * 0.85) { target in
+                        _ = model.perform(.command(.goToPage(target)))
+                    }
+                    .padding(4)
                 } else if let note {
                     ScrollView {
                         MarkdownNoteView(text: note.text, fontSize: model.notesFontSize)
@@ -329,6 +400,57 @@ struct NotesPane: View {
     private func finishEditing(page: Int) {
         presentation.setUserNote(draft, forPage: editingPage ?? page)
         model.setNotesEditing(false)
+        // A note was just written: show it rather than snapping back to the contents.
+        if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { showsContents = false }
+    }
+}
+
+/// The PDF outline as a list with the current part highlighted and kept in view; each entry shows the frame it
+/// starts on. Used by the notes pane (jumps) and the overview sidebar (browses).
+struct OutlineList: View {
+    let outline: Outline
+    let frames: FrameIndex
+    let currentPage: Int
+    let fontSize: CGFloat
+    let select: (Int) -> Void
+
+    var body: some View {
+        let currentID = outline.currentEntry(forPage: currentPage)?.id
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(outline.flattened, id: \.node.id) { entry in
+                        let isCurrent = entry.node.id == currentID
+                        Button {
+                            if let page = entry.node.pageIndex { select(page) }
+                        } label: {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(entry.node.title.isEmpty ? "(untitled)" : entry.node.title)
+                                    .lineLimit(2)
+                                    .padding(.leading, CGFloat(entry.depth) * fontSize * 0.9)
+                                Spacer(minLength: 8)
+                                if let page = entry.node.pageIndex {
+                                    Text(frames.frame(containing: page).label)
+                                        .font(.system(size: fontSize * 0.8)).monospacedDigit()
+                                        .foregroundStyle(isCurrent ? .primary : .tertiary)
+                                }
+                            }
+                            .font(.system(size: fontSize, weight: isCurrent ? .semibold : .regular))
+                            .padding(.vertical, 5).padding(.horizontal, 8)
+                            .background(isCurrent ? Color.accentColor.opacity(0.35) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(entry.node.pageIndex == nil)
+                        .id(entry.node.id)
+                    }
+                }
+                .padding(4)
+            }
+            .onChange(of: currentID, initial: true) { _, id in
+                if let id { proxy.scrollTo(id, anchor: .center) }
+            }
+        }
     }
 }
 
@@ -448,11 +570,16 @@ struct BannerStack: View {
     }
 }
 
-/// Frame label and total, build x/y, elapsed, wall clock, remaining vs target, audience indicator (SPEC §6.2).
+/// Frame label and total, build x/y, the timer, wall clock and the audience indicator (SPEC §6.2).
 /// Three fixed regions: frame info on the left, the timer always centred, the audience state on the right, so
 /// nothing shifts as the text on the left changes width (feedback round 1).
+///
+/// The timer counts up in white until a countdown is set (pdfpc duration, sidecar, or by clicking the timer);
+/// then the time left takes its place, green while there is some and red, counting up again, once it has run
+/// out (feedback round 2).
 struct StatusBar: View {
     let model: AppModel
+    @State private var countdownEditorShown = false
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -467,8 +594,6 @@ struct StatusBar: View {
                         }
                         if presentation.isInAppendix {
                             Text("APPENDIX").font(.system(size: Theme.body, weight: .heavy)).foregroundStyle(.purple)
-                        } else if let left = presentation.mainTalkFramesLeft {
-                            Text("\(left) left").foregroundStyle(.secondary)
                         }
                     } else {
                         Text("No deck open").foregroundStyle(.secondary)
@@ -490,25 +615,41 @@ struct StatusBar: View {
             .padding(.vertical, 14)
             .background(Color.white.opacity(0.06))
         }
+        .onChange(of: model.countdownEditorRequest) { _, _ in
+            if model.presentation != nil { countdownEditorShown = true }
+        }
     }
 
     @ViewBuilder
     private func timerSection(presentation: Presentation, now: Date) -> some View {
         let timer = presentation.state.timer
-        let elapsed = timer.elapsed(at: now)
         HStack(spacing: 20) {
-            Label(format(elapsed), systemImage: timer.isRunning ? "timer" : "pause.circle")
+            Button { countdownEditorShown = true } label: { timerText(timer, now: now) }
+                .buttonStyle(.plain)
+                .help("Click to set a countdown")
+                .popover(isPresented: $countdownEditorShown, arrowEdge: .top) {
+                    CountdownEditor(model: model, presentation: presentation, isPresented: $countdownEditorShown)
+                }
+            Text(now, format: .dateTime.hour().minute()).monospacedDigit().foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func timerText(_ timer: TimerState, now: Date) -> some View {
+        let icon = timer.isRunning ? "timer" : "pause.circle"
+        if let remaining = timer.remaining(at: now) {
+            let over = remaining.rounded() < 0
+            Label((over ? "−" : "") + StatusBar.format(abs(remaining)), systemImage: icon)
+                .font(.system(size: Theme.status, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(over ? Color.red : Color.green)
+                .accessibilityLabel(over ? "Over time" : "Time left")
+        } else {
+            Label(StatusBar.format(timer.elapsed(at: now)), systemImage: icon)
                 .font(.system(size: Theme.status, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(timer.isRunning ? .primary : .secondary)
-            Text(now, format: .dateTime.hour().minute()).monospacedDigit().foregroundStyle(.secondary)
-            if let target = timer.target, let remaining = timer.remaining(at: now) {
-                let pace = PaceIndicator.pace(framesDone: presentation.committedFrame.index, framesTotal: presentation.document.mainTalkFrameCount,
-                                              elapsed: elapsed, target: target)
-                Text((remaining < 0 ? "−" : "") + format(abs(remaining)) + " left")
-                    .monospacedDigit()
-                    .foregroundStyle(paceColor(pace, remaining: remaining))
-            }
+                .accessibilityLabel("Elapsed")
         }
     }
 
@@ -533,18 +674,66 @@ struct StatusBar: View {
         }
     }
 
-    private func paceColor(_ pace: Pace, remaining: TimeInterval) -> Color {
-        if remaining < 0 { return .red }
-        switch pace {
-        case .ahead: return .green
-        case .slightlyBehind: return .orange
-        case .behind: return .red
-        }
-    }
-
-    private func format(_ seconds: TimeInterval) -> String {
+    static func format(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
+    }
+}
+
+/// The popover on the timer: type a countdown ("45", "45:00", "1h30"); Return sets it. The time left is the
+/// countdown minus the talk's elapsed time, so it can be set before or during the talk.
+struct CountdownEditor: View {
+    let model: AppModel
+    let presentation: Presentation
+    @Binding var isPresented: Bool
+    @State private var text = ""
+    @State private var invalid = false
+    @FocusState private var fieldFocused: Bool
+
+    var body: some View {
+        let timer = presentation.state.timer
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Count down from").font(.headline)
+            HStack {
+                TextField("minutes, or h:mm:ss", text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 160)
+                    .focused($fieldFocused)
+                    .onSubmit(apply)
+                Button("Set", action: apply).keyboardShortcut(.defaultAction)
+            }
+            if invalid {
+                Text("Enter minutes (45), minutes:seconds (45:00) or hours (1h30).").font(.callout).foregroundStyle(.red)
+            }
+            Text("Elapsed so far: \(StatusBar.format(timer.elapsed(at: Date()))). The time left replaces the elapsed time, green until it runs out, then red and counting up.")
+                .font(.callout).foregroundStyle(.secondary)
+            if timer.target != nil {
+                Button("Remove countdown, show elapsed time") {
+                    model.setTargetDuration(nil)
+                    isPresented = false
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 360)
+        .onAppear {
+            if let target = timer.target { text = StatusBar.format(target) }
+            // The popover's window exists only after this appear; focusing a moment later makes it key, so typing
+            // lands in the field rather than in the presenter's key map (verified by the self-test).
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(80))
+                fieldFocused = true
+            }
+        }
+    }
+
+    private func apply() {
+        guard let seconds = DurationParser.seconds(from: text) else {
+            invalid = true
+            return
+        }
+        model.setTargetDuration(seconds)
+        isPresented = false
     }
 }

@@ -277,3 +277,54 @@ All eight items are in, each verified in-app by screenshots from the self-test (
 4. Click Laser under the slide: it lights red and the dot follows the mouse over the slide (and on the projector); click it again or press L to turn it off. Same for Pen (orange) and Clear.
 5. Hold ⌘ for half a second: the shortcut card appears; release: it goes. Press ⌘E normally: no card flashes.
 6. ⌘, opens Settings. Choose "the previous frame's first build", then in `overlays.pdf` go to frame 3 build 1 and press ←: you land on frame 2 build 1 (not build 3). Switch back and ← lands on frame 2's last build. Tell me if you meant something different by "jumps to the first build of each frame".
+
+## Feedback round 2 (2026-10-27, branch `feedback-2`)
+
+Ben's second round after using the round-1 build, nine items, all in the Mac presenter.
+
+### Plan
+
+1. Labels match keys: Laser (L), Draw (D), Clear (C); E unbound; menus and the shortcut card follow.
+2. Shortcut card: a ⌘ tap toggles it; it stays until ⌘ again, Esc or a click outside; rows are clickable and run their command; the "B ." entry lists only B.
+3. A click on the current or next slide is the next build.
+4. Countdown: once a target exists, the time left replaces the elapsed time, green then red (negative, counting up); clicking the timer opens an editor for any deck.
+5. Drop "X left" from the status bar.
+6. The notes editor's Done button must not move the pane header.
+7. ⌃⌘F toggles full screen.
+8. The notes pane doubles as the table of contents, with the current part highlighted; a frame without notes shows the contents.
+9. Transitions: nothing was implemented (M9); strike them from the spec instead.
+
+### Feedback round 2 report (2026-10-27)
+
+1. **Semantic labels.** Buttons under the slide read Laser L, Draw D, Clear C; the Presentation menu says Laser Pointer (L), Draw on Slide (D), Clear Drawing (C); `KeyMap` binds C to clear and E to nothing. SPEC §6.5 updated.
+2. **Shortcut card.** `AppDelegate` arms a "tap" when ⌘ goes down alone and toggles the card when ⌘ comes up with no key or click in between; any key press, mouse click or extra modifier disarms it, so ⌘-shortcuts and ⌘-clicks never show it. The card is now an `.overlay` over the whole window with a backdrop that takes clicks (so a click outside closes it without reaching the slide) and rows that are buttons: `ShortcutReference` rows carry a `perform` closure, `AppModel.run(_:)` closes the card and runs it. Esc closes it and is consumed. Rows with two commands were split (⇧→ / ⇧←, T / ⌥T, ⌘O / ⌘W) and an App group holds ⌃⌘F, ⌘, ⌘O, ⌘W. "." stays bound (clickers) but is not listed. Settings wording: "Tap ⌘ on its own…".
+3. **Click to advance.** `SlideSurfaceView.onClick` fires for a click that hit no link and started no stroke; the current and next surfaces route it to `.next` through the same latency instrumentation as a key press. The audience window is untouched.
+4. **Countdown.** `StatusBar` shows `timer.remaining` in place of the elapsed time when a target is set: green, or red with a leading minus once `remaining.rounded() < 0`. The timer is a button; its popover (`CountdownEditor`) takes "45", "45:30", "1:05:00", "90m", "1h30" (`DurationParser`, 3 app tests), Return sets, and a button removes the countdown. The popover's field is focused on open, so digits go to the field and not to jump-by-number (the self-test types into it through the real event path). The Target Duration menu became Countdown; "Custom…" opens the same popover; the `NSAlert` prompt is gone. pdfpc decks with a duration show the countdown from the first advance, as before.
+5. **"X left"** removed, with `Presentation.mainTalkFramesLeft`.
+6. **Pane header height** is fixed (`Theme.paneHeader`, 26 pt) and the Done button is `.small`; the self-test screenshots with and without the editor show the heading at the same place.
+7. **Full screen.** View ▸ Enter Full Screen (⌃⌘F) with AppKit's `toggleFullScreen:`; the presenter window is `fullScreenPrimary`. Self-test enters and leaves.
+8. **Contents in the notes pane.** `Outline.currentEntry(forPage:)` in PresenterCore (2 tests) finds the last entry starting at or before the page. `OutlineList` (shared with the overview sidebar, which now highlights the containing entry too) shows the entries with their frame labels, highlights and scrolls to the current one, and jumps on click. `NotesPane` has Notes / Contents headings; Contents is shown on request or whenever the frame has no notes; clicking Notes on a frame without notes opens the editor; Done after writing a note shows the note.
+9. **Transitions** struck from SPEC §4.5 and the §13 open decision; recorded in `docs/decisions.md`. No code existed.
+10. Also fixed on the way: in the overview's narrow current pane the Laser / Draw / Clear titles had truncated to "… L"; the bar now drops its hint text instead (`ViewThatFits`).
+
+The self-test gained `-clicks`, `-countdown`, `-contents` and `-fullscreen` steps and a `-shortcuts` step that drives every card transition with real ⌘, key and mouse events. It also now starts every run at page 1 (the sidecar restores the last position, which had made runs order-dependent) and names captured popover windows `popover-*.png`.
+
+Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-tests on `basic-169.pdf`, `pdfpc-notes.pdf`, `overlays.pdf` and `links-appendix.pdf` with no misses; screenshots of the card, the contents tab, the editor header, the countdown in green and red, the editor popover and the overview.
+
+**Known issues**
+
+- Keys pressed while the shortcut card is up still do their job and leave the card up (Ben listed only ⌘, Esc and a click outside as ways to close it); clicking a row closes it. Say if a key press should close it too.
+- The card is about 1120 pt wide; on a presenter window narrower than that it overflows (window minimum is 900 pt).
+- A countdown set during the talk counts from the talk's start (time left = countdown − elapsed), shown in the editor. If "from now" is what you expect, say so.
+- The Contents list is flat (indented), not collapsible.
+- With the card or the countdown popover open, the self-test cannot verify that the row hover highlight renders; hover is visual only.
+
+**Ben device checklist (feedback round 2, no new hardware)**
+
+1. Tap ⌘ (press and release alone): the card appears and stays. Press →: the slide advances, the card stays. Tap ⌘: it closes. Tap ⌘, press Esc: closes. Tap ⌘, click the slide outside the card: closes, slide unchanged. Tap ⌘, click "Black screen": audience goes black, card closes. ⌘E, ⌘W, ⌘-click: no card.
+2. Click the current slide: next build; click the Next preview: next build. With Draw on, a click-drag draws instead; a link still follows.
+3. `Fixtures/pdfpc-notes.pdf`: the timer is green 30:00 and counts down from the first advance. `basic-169.pdf`: white elapsed time; click it, type `1`, Return: green 01:00 minus the elapsed time, red and counting up after a minute. Presentation ▸ Countdown ▸ None: white again. Also try the presets and that the popover's field has the cursor when it opens.
+4. `basic-169.pdf` has sections but no notes: the pane shows Contents with the current section highlighted; click a section: jump; ⌫: back. `pdfpc-notes.pdf`: Notes shown; click Contents, then Notes. ⌘E on a frame without notes: the editor opens; type, Done: the Notes heading does not move.
+5. ⌃⌘F: full screen; ⌃⌘F again: back. The green button too.
+6. The buttons say Laser L, Draw D, Clear C; C clears, E does nothing.
+7. Tell me if ← inside the card's "Previous build" row, the countdown-from-start rule, or the keys-leave-the-card-up rule is not what you meant.

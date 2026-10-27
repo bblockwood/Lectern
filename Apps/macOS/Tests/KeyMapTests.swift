@@ -43,10 +43,15 @@ private func key(_ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.M
         #expect(KeyMap.action(for: key("p", modifiers: [.command, .option])) == .startPresenting)
         #expect(KeyMap.action(for: key("f")) == .toggleFreeze)
         #expect(KeyMap.action(for: key("w")) == .toggleAudience(.white))
+        #expect(KeyMap.action(for: key("l")) == .togglePointer)
+        #expect(KeyMap.action(for: key("d")) == .toggleDraw)
+        #expect(KeyMap.action(for: key("c")) == .command(.clearInk))   // C for Clear (feedback round 2; was E)
     }
 
     @MainActor @Test func unmappedKeysPassThrough() {
         #expect(KeyMap.action(for: key("x")) == nil)
+        #expect(KeyMap.action(for: key("e")) == nil)
+        #expect(KeyMap.action(for: key("f", modifiers: [.command, .control])) == nil)   // ⌃⌘F is the View menu's full screen
         #expect(KeyMap.action(for: key("o", modifiers: .command)) == nil)
         #expect(KeyMap.action(for: key("n", modifiers: .control)) == nil)
     }

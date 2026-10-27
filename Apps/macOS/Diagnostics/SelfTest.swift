@@ -29,6 +29,7 @@ final class SelfTest {
             print("SELFTEST FAIL: could not open \(url.path)")
             exit(2)
         }
+        presentation.apply(.goToPage(0))   // the sidecar restores the last position; runs must not depend on it
         model.startPresenting()
         Latency.shared.onSample = { [weak self] sample in
             self?.samples.append(sample)
@@ -44,15 +45,76 @@ final class SelfTest {
         for _ in 0..<forward { await press(keyCode: 124, character: "\u{F703}") }   // → next
         captureScreenshots()
         if CommandLine.arguments.contains("-shortcuts"), let model = (NSApp.delegate as? AppDelegate)?.model {
-            // Hold ⌘ through the real path: flagsChanged → monitor → 350 ms delay → overlay; release hides it.
-            postFlags([.command])
-            try? await Task.sleep(for: .milliseconds(650))
-            let shown = model.shortcutOverlayVisible
-            captureScreenshots(suffix: "-shortcuts")
-            postFlags([])
+            await shortcutsCheck(model: model, presentation: presentation)
+        }
+        if CommandLine.arguments.contains("-clicks"), let model = (NSApp.delegate as? AppDelegate)?.model {
+            // A plain click on the current slide, then on the next-slide preview, advances one build each.
+            let before = presentation.state.committedPage
+            await click(on: presentation.currentSurface.view, at: (0.5, 0.5))
+            let afterCurrent = presentation.state.committedPage
+            await click(on: presentation.previewSurface.view, at: (0.5, 0.5))
+            let afterNext = presentation.state.committedPage
+            print("CLICKS \(afterCurrent == before + 1 && afterNext == before + 2 ? "OK" : "FAIL"): page \(before + 1) → click current → \(afterCurrent + 1) → click next → \(afterNext + 1)")
+            _ = model.perform(.command(.previous))
+            _ = model.perform(.command(.previous))
+        }
+        if CommandLine.arguments.contains("-countdown"), let model = (NSApp.delegate as? AppDelegate)?.model {
+            // 25 minutes: green time left in place of the elapsed time; 1 second: already over, red and negative.
+            let fromDeck = presentation.state.timer.target
+            model.setTargetDuration(25 * 60)
+            try? await Task.sleep(for: .milliseconds(300))
+            let remaining = presentation.state.timer.remaining(at: Date()) ?? 0
+            captureScreenshots(suffix: "-countdown")
+            model.setTargetDuration(1)
+            try? await Task.sleep(for: .milliseconds(1800))   // well past the 1 s target
+            let over = presentation.state.timer.remaining(at: Date()) ?? 0
+            captureScreenshots(suffix: "-overtime")
+            model.requestCountdownEditor()
+            try? await Task.sleep(for: .milliseconds(500))
+            captureScreenshots(suffix: "-countdown-editor")
+            // Keys must land in the popover's field, not in the presenter's key map (a digit would start a jump).
+            func fields(_ view: NSView?) -> [NSTextField] {
+                (view?.subviews ?? []).flatMap { ($0 as? NSTextField).map { [$0] } ?? fields($0) }
+            }
+            let popover = NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
+            let fieldFocused = popover?.isKeyWindow == true && popover?.firstResponder is NSTextView
+            let jumpBefore = model.jumpBuffer
+            await press(keyCode: 20, character: "3")
+            let fieldText = fields(popover?.contentView).first?.stringValue ?? ""
+            let typedIntoField = fieldText.hasSuffix("3") && model.jumpBuffer == jumpBefore
+            print("COUNTDOWN editor \(fieldFocused && typedIntoField ? "OK" : "FAIL"): popover \(popover == nil ? "missing" : "open"), its field focused \(fieldFocused); typing 3 gave the field \"\(fieldText)\" and the jump buffer \"\(model.jumpBuffer)\"")
+            await press(keyCode: 53, character: "\u{1b}")   // closes the popover
+            try? await Task.sleep(for: .milliseconds(300))
+            _ = model.perform(.escape)   // clears a stray jump digit, if any
+            model.setTargetDuration(fromDeck)
+            presentation.flushSidecar()   // the save is debounced; exit(0) below would otherwise keep the test's target
+            print("COUNTDOWN \(remaining > 24 * 60 && remaining <= 25 * 60 && over < 0 ? "OK" : "FAIL"): deck target \(fromDeck.map { "\(Int($0)) s" } ?? "none"); 25 min set → \(Int(remaining)) s left; 1 s set → \(Int(over)) s (negative = over time)")
+        }
+        if CommandLine.arguments.contains("-contents"), let model = (NSApp.delegate as? AppDelegate)?.model {
+            // The notes pane's Contents tab, with the entry containing the current page highlighted.
+            let outline = presentation.document.outline
+            UserDefaults.standard.set(true, forKey: "notes.showsContents")
+            try? await Task.sleep(for: .milliseconds(400))
+            captureScreenshots(suffix: "-contents")
+            UserDefaults.standard.set(false, forKey: "notes.showsContents")
+            // The notes editor's Done button must not move the pane header (feedback round 2).
+            model.setNotesEditing(true)
+            try? await Task.sleep(for: .milliseconds(400))
+            captureScreenshots(suffix: "-editing")
+            model.setNotesEditing(false)
             try? await Task.sleep(for: .milliseconds(200))
-            let hidden = !model.shortcutOverlayVisible
-            print("SHORTCUTS overlay \(shown ? "shown after holding ⌘" : "NOT shown after holding ⌘"); \(hidden ? "hidden on release" : "NOT hidden on release")")
+            let page = presentation.state.presenterPage
+            let current = outline.currentEntry(forPage: page)
+            print("CONTENTS outline entries \(outline.flattened.count); on page \(page + 1) the current entry is \(current.map { "\"\($0.title)\" (page \(($0.pageIndex ?? -1) + 1))" } ?? "none")")
+        }
+        if CommandLine.arguments.contains("-fullscreen"), let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
+            window.toggleFullScreen(nil)
+            try? await Task.sleep(for: .seconds(2))
+            let entered = window.styleMask.contains(.fullScreen)
+            window.toggleFullScreen(nil)
+            try? await Task.sleep(for: .seconds(2))
+            let left = !window.styleMask.contains(.fullScreen)
+            print("FULLSCREEN \(entered && left ? "OK" : "FAIL"): entered \(entered), left again \(left)")
         }
         if CommandLine.arguments.contains("-closebutton"), let model = (NSApp.delegate as? AppDelegate)?.model,
            let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
@@ -210,6 +272,70 @@ final class SelfTest {
         print("ROUNDTRIP \(ok ? "OK" : "FAIL"): page \(before + 1) → click link → page \(afterClick + 1) → Delete → page \(afterBack + 1); history \(presentation.state.history), forward \(presentation.state.forwardHistory)")
     }
 
+    /// Feedback round 2: a ⌘ tap toggles the card; Esc and a click outside close it; a row click runs its command;
+    /// ⌘ plus a key never flashes it.
+    private func shortcutsCheck(model: AppModel, presentation: Presentation) async {
+        func tap() async {
+            postFlags([.command])
+            try? await Task.sleep(for: .milliseconds(60))
+            postFlags([])
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        await tap()
+        let shownByTap = model.shortcutOverlayVisible
+        captureScreenshots(suffix: "-shortcuts")
+        await tap()
+        let hiddenByTap = !model.shortcutOverlayVisible
+        await tap()
+        await press(keyCode: 53, character: "\u{1b}")
+        let hiddenByEsc = !model.shortcutOverlayVisible
+        await tap()
+        let pageBefore = presentation.state.committedPage
+        await click(on: presentation.currentSurface.view, at: (0.02, 0.02), awaitSample: false)   // outside the card
+        try? await Task.sleep(for: .milliseconds(250))
+        let hiddenByClick = !model.shortcutOverlayVisible, stayed = presentation.state.committedPage == pageBefore
+        postFlags([.command])
+        await press(keyCode: 38, character: "j", modifiers: [.command])   // ⌘J: bound to nothing, so no state changes
+        postFlags([])
+        try? await Task.sleep(for: .milliseconds(250))
+        let noFlash = !model.shortcutOverlayVisible
+        await tap()
+        if let next = ShortcutReference.shortcut(named: "Next build") { model.run(next) }
+        try? await Task.sleep(for: .milliseconds(250))
+        let rowRan = presentation.state.committedPage == pageBefore + 1 && !model.shortcutOverlayVisible
+        if rowRan { _ = model.perform(.command(.previous)) }
+        let ok = shownByTap && hiddenByTap && hiddenByEsc && hiddenByClick && stayed && noFlash && rowRan
+        print("SHORTCUTS \(ok ? "OK" : "FAIL"): ⌘ tap shows \(shownByTap); second tap hides \(hiddenByTap); Esc hides \(hiddenByEsc); click outside hides \(hiddenByClick) without advancing \(stayed); ⌘J does not flash it \(noFlash); clicking the Next build row advanced and closed it \(rowRan)")
+    }
+
+    /// Posts a click at a normalised point of a slide surface through the real event path; waits for the latency
+    /// sample it produces when `awaitSample` is set.
+    private func click(on view: SlideSurfaceView, at normalized: (Double, Double), awaitSample: Bool = true) async {
+        guard let window = view.window else { return }
+        let slide = view.slideFrame
+        let point = NSPoint(x: slide.minX + slide.width * normalized.0, y: slide.minY + slide.height * (1 - normalized.1))
+        let location = view.convert(point, to: nil)
+        func event(_ type: NSEvent.EventType, pressure: Float) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil, eventNumber: 9, clickCount: 1, pressure: pressure)!
+        }
+        if awaitSample {
+            await withCheckedContinuation { continuation in
+                pending = continuation
+                NSApp.postEvent(event(.leftMouseDown, pressure: 1), atStart: false)
+                NSApp.postEvent(event(.leftMouseUp, pressure: 0), atStart: false)
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    if let c = self.pending { self.pending = nil; c.resume() }
+                }
+            }
+        } else {
+            NSApp.postEvent(event(.leftMouseDown, pressure: 1), atStart: false)
+            NSApp.postEvent(event(.leftMouseUp, pressure: 0), atStart: false)
+        }
+        try? await Task.sleep(for: .milliseconds(120))
+    }
+
     /// Posts a modifier change (⌘ down or up) the way the keyboard would.
     private func postFlags(_ flags: NSEvent.ModifierFlags) {
         guard let window = NSApp.windows.first(where: { $0 is PresenterWindow }),
@@ -220,9 +346,9 @@ final class SelfTest {
         NSApp.postEvent(event, atStart: false)
     }
 
-    private func press(keyCode: UInt16, character: String, shift: Bool = false) async {
+    private func press(keyCode: UInt16, character: String, shift: Bool = false, modifiers: NSEvent.ModifierFlags = []) async {
         guard let window = NSApp.windows.first(where: { $0 is PresenterWindow }) else { return }
-        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? [.shift] : [],
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? modifiers.union(.shift) : modifiers,
                                      timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
                                      context: nil, characters: character, charactersIgnoringModifiers: character,
                                      isARepeat: false, keyCode: keyCode)!
@@ -258,7 +384,9 @@ final class SelfTest {
             }
             layer.render(in: ctx)
             guard let image = ctx.makeImage() else { continue }
-            let kind = window is PresenterWindow ? "presenter" : (window.title == "Settings" ? "settings" : "audience")
+            let kind = window is PresenterWindow ? "presenter"
+                : window.title == "Settings" ? "settings"
+                : String(describing: type(of: window)).contains("Popover") ? "popover" : "audience"
             let name = kind + suffix + ".png"
             let rep = NSBitmapImageRep(cgImage: image)
             try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent(name))
