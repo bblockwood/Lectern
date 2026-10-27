@@ -1,7 +1,6 @@
 import PresenterCore
 import PresenterProtocol
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// Type sizes for the presenter chrome. Everything here is read at a glance from behind a lectern, so it is
 /// larger than ordinary Mac UI (feedback round 1).
@@ -39,8 +38,6 @@ struct PresenterRootView: View {
                         PresenterLayout(model: model, presentation: presentation)
                             .id(ObjectIdentifier(presentation))
                     }
-                } else {
-                    WelcomeView(model: model)
                 }
                 BannerStack(model: model)
                 if !model.jumpBuffer.isEmpty {
@@ -66,6 +63,8 @@ struct PresenterRootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.12), value: model.shortcutOverlayVisible)
+        .centredTitleStrip(title: model.presentation?.document.url.lastPathComponent ?? "Lectern",
+                           fileURL: model.presentation?.document.url)
         .background(Color.black)
         .preferredColorScheme(.dark)
         .dropDestination(for: URL.self) { urls, _ in
@@ -73,52 +72,6 @@ struct PresenterRootView: View {
             model.open(url: url)
             return true
         }
-    }
-}
-
-struct WelcomeView: View {
-    let model: AppModel
-
-    var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            Text("Lectern").font(.system(size: 44, weight: .semibold))
-            Text("Drop a PDF here, or open one.").font(.system(size: Theme.body)).foregroundStyle(.secondary)
-            Button("Open PDF…") { model.openPanel() }
-                .keyboardShortcut("o", modifiers: .command)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-            if !model.recents.urls.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Recent").font(.system(size: Theme.body, weight: .semibold)).foregroundStyle(.secondary)
-                    ForEach(model.recents.urls, id: \.self) { url in
-                        Button {
-                            model.open(url: url)
-                        } label: {
-                            HStack {
-                                Image(systemName: "doc.richtext")
-                                VStack(alignment: .leading) {
-                                    Text(url.lastPathComponent).font(.system(size: Theme.body))
-                                    Text(url.deletingLastPathComponent().path).font(.system(size: Theme.small)).foregroundStyle(.tertiary).lineLimit(1)
-                                }
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu { Button("Remove from Recents") { model.recents.remove(url) } }
-                    }
-                }
-                .frame(maxWidth: 520)
-                .padding()
-                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
-            }
-            Spacer()
-            Text("→ / Space / click next build · ← previous · ⇧→ next frame · ⌥⌘P present · tap ⌘ for every shortcut")
-                .font(.system(size: Theme.small)).foregroundStyle(.tertiary)
-                .padding(.bottom, 12)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -250,7 +203,7 @@ struct ModeBar: View {
         if presentation.pointerMode {
             Text("Move the mouse over the slide").font(.system(size: Theme.small)).foregroundStyle(.secondary)
         } else if presentation.drawMode {
-            Text("Draw on the slide; strokes fade after 3 s").font(.system(size: Theme.small)).foregroundStyle(.secondary)
+            Text("Draw on the slide; C clears, so does the next build").font(.system(size: Theme.small)).foregroundStyle(.secondary)
         } else {
             Text("Click the slide for the next build").font(.system(size: Theme.small)).foregroundStyle(.tertiary)
         }
@@ -319,31 +272,28 @@ struct PaneTab: View {
 
 /// Notes for the presenter's page (SPEC §5.2): Markdown text from the merged sources, the rendered notes
 /// half of a second-screen deck, or an inline editor that writes to the sidecar. The pane doubles as the table
-/// of contents (feedback round 2): the Contents heading switches to the PDF outline with the current part
-/// highlighted, and a frame without notes shows the contents on its own.
+/// of contents (feedback rounds 2 and 3): the Contents heading switches to the PDF outline with the current
+/// part highlighted. Which one shows is decided once when the deck opens and then only by the user.
 struct NotesPane: View {
     let model: AppModel
     let presentation: Presentation
     @State private var draft = ""
     @State private var editingPage: Int? = nil
-    @AppStorage("notes.showsContents") private var showsContents = false
 
     var body: some View {
         let page = presentation.state.presenterPage
         let note = presentation.currentNote
         let outline = presentation.document.outline
-        let noteAvailable = note != nil || presentation.notesSplit != .none
-        let contentsShown = !model.notesEditing && !outline.isEmpty && (showsContents || !noteAvailable)
+        let contentsShown = !model.notesEditing && !outline.isEmpty && model.notesShowsContents
         VStack(alignment: .leading, spacing: Theme.paneSpacing) {
             HStack(spacing: 14) {
                 PaneTab(text: "Notes", active: !contentsShown) {
-                    showsContents = false
-                    if !noteAvailable, !model.notesEditing { model.setNotesEditing(true) }
+                    model.setNotesShowsContents(false)
                 }
                 if !outline.isEmpty {
                     PaneTab(text: "Contents", active: contentsShown) {
                         if model.notesEditing { finishEditing(page: page) }
-                        showsContents = true
+                        model.setNotesShowsContents(true)
                     }
                 }
                 Spacer()
@@ -401,7 +351,7 @@ struct NotesPane: View {
         presentation.setUserNote(draft, forPage: editingPage ?? page)
         model.setNotesEditing(false)
         // A note was just written: show it rather than snapping back to the contents.
-        if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { showsContents = false }
+        if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { model.setNotesShowsContents(false) }
     }
 }
 

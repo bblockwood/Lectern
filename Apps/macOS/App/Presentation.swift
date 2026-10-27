@@ -46,7 +46,9 @@ final class Presentation {
     private(set) var reloadOutcomes = 0
     @ObservationIgnored var onNotice: ((Banner) -> Void)?
 
-    static let ephemeralInkLifetime: TimeInterval = 3
+    /// Seconds before an ephemeral stroke fades, or nil to keep strokes until C clears them or the page changes
+    /// (feedback round 3; SPEC §8's fade is off on the Mac).
+    static let ephemeralInkLifetime: TimeInterval? = nil
 
     init(document loaded: PresentationDocument, surroundColor: CGColor) {
         let sidecar = SidecarStore.load(forDeck: loaded.url) ?? SidecarDocument()
@@ -250,16 +252,16 @@ final class Presentation {
         for surface in [audienceSurface, currentSurface] {
             surface.view.showPointer(at: pointer)
             surface.view.showInk(strokes) { stroke in
-                guard stroke.mode == .ephemeral else { return 1 }
+                guard stroke.mode == .ephemeral, let lifetime else { return 1 }
                 let remaining = lifetime - now.timeIntervalSince(stroke.startedAt)
                 return Float(min(1, max(0, remaining)))   // fades over the last second
             }
         }
-        if !strokes.isEmpty, inkPruneTask == nil {
+        if let lifetime, !strokes.isEmpty, inkPruneTask == nil {
             inkPruneTask = Task { [weak self] in
                 while let self, !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(100))
-                    if !self.controller.pruneEphemeralInk(now: Date(), maxAge: Presentation.ephemeralInkLifetime) {
+                    if !self.controller.pruneEphemeralInk(now: Date(), maxAge: lifetime) {
                         self.refreshOverlays()   // repaint for the fade even when nothing was removed yet
                     }
                     if self.state.ink.strokes.isEmpty && self.state.ink.active == nil { break }

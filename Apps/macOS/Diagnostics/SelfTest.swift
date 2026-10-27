@@ -24,6 +24,11 @@ final class SelfTest {
     }
 
     func run(in model: AppModel) {
+        NSApp.activate()
+        continueRun(in: model)
+    }
+
+    private func continueRun(in model: AppModel) {
         model.open(url: url)
         guard let presentation = model.presentation else {
             print("SELFTEST FAIL: could not open \(url.path)")
@@ -42,6 +47,7 @@ final class SelfTest {
 
     private func drive(forward: Int, presentation: Presentation) async {
         try? await Task.sleep(for: .seconds(1.5))   // let the first prefetch ring land
+        if !NSApp.isActive { print("SELFTEST WARNING: this instance is not the active app (another Lectern running?); focus-dependent checks are skipped") }
         for _ in 0..<forward { await press(keyCode: 124, character: "\u{F703}") }   // → next
         captureScreenshots()
         if CommandLine.arguments.contains("-shortcuts"), let model = (NSApp.delegate as? AppDelegate)?.model {
@@ -77,12 +83,16 @@ final class SelfTest {
                 (view?.subviews ?? []).flatMap { ($0 as? NSTextField).map { [$0] } ?? fields($0) }
             }
             let popover = NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
-            let fieldFocused = popover?.isKeyWindow == true && popover?.firstResponder is NSTextView
-            let jumpBefore = model.jumpBuffer
-            await press(keyCode: 20, character: "3")
-            let fieldText = fields(popover?.contentView).first?.stringValue ?? ""
-            let typedIntoField = fieldText.hasSuffix("3") && model.jumpBuffer == jumpBefore
-            print("COUNTDOWN editor \(fieldFocused && typedIntoField ? "OK" : "FAIL"): popover \(popover == nil ? "missing" : "open"), its field focused \(fieldFocused); typing 3 gave the field \"\(fieldText)\" and the jump buffer \"\(model.jumpBuffer)\"")
+            if NSApp.isActive {
+                let fieldFocused = popover?.isKeyWindow == true && popover?.firstResponder is NSTextView
+                let jumpBefore = model.jumpBuffer
+                await press(keyCode: 20, character: "3")
+                let fieldText = fields(popover?.contentView).first?.stringValue ?? ""
+                let typedIntoField = fieldText.hasSuffix("3") && model.jumpBuffer == jumpBefore
+                print("COUNTDOWN editor \(fieldFocused && typedIntoField ? "OK" : "FAIL"): popover \(popover == nil ? "missing" : "open"), its field focused \(fieldFocused); typing 3 gave the field \"\(fieldText)\" and the jump buffer \"\(model.jumpBuffer)\"")
+            } else {
+                print("COUNTDOWN editor SKIPPED (app not active): popover \(popover == nil ? "missing" : "open")")
+            }
             await press(keyCode: 53, character: "\u{1b}")   // closes the popover
             try? await Task.sleep(for: .milliseconds(300))
             _ = model.perform(.escape)   // clears a stray jump digit, if any
@@ -93,10 +103,15 @@ final class SelfTest {
         if CommandLine.arguments.contains("-contents"), let model = (NSApp.delegate as? AppDelegate)?.model {
             // The notes pane's Contents tab, with the entry containing the current page highlighted.
             let outline = presentation.document.outline
-            UserDefaults.standard.set(true, forKey: "notes.showsContents")
+            let openedWithContents = model.notesShowsContents
+            model.setNotesShowsContents(true)
             try? await Task.sleep(for: .milliseconds(400))
             captureScreenshots(suffix: "-contents")
-            UserDefaults.standard.set(false, forKey: "notes.showsContents")
+            _ = model.perform(.command(.next))
+            _ = model.perform(.command(.previous))
+            let stuck = model.notesShowsContents
+            print("CONTENTS sticky \(stuck ? "OK" : "FAIL"): opened showing \(openedWithContents ? "contents" : "notes") (first slide \(presentation.notes.table.note(for: 0, frames: presentation.document.frames) == nil ? "has no notes" : "has notes")); still contents after moving \(stuck)")
+            model.setNotesShowsContents(false)
             // The notes editor's Done button must not move the pane header (feedback round 2).
             model.setNotesEditing(true)
             try? await Task.sleep(for: .milliseconds(400))
@@ -118,23 +133,41 @@ final class SelfTest {
         }
         if CommandLine.arguments.contains("-closebutton"), let model = (NSApp.delegate as? AppDelegate)?.model,
            let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
-            // The red button: performClose asks windowShouldClose, which closes the deck and keeps the window.
+            // The red button: performClose asks windowShouldClose, which closes the deck; the presenter window
+            // hides and the chooser comes back (feedback round 3).
+            let welcome = NSApp.windows.first { $0 is WelcomeWindow }
+            let filled = window.frame == window.screen?.visibleFrame
             window.performClose(nil)
-            try? await Task.sleep(for: .milliseconds(400))
-            let closed = model.presentation == nil, stillOpen = window.isVisible
-            print("CLOSEBUTTON \(closed ? "deck closed" : "deck NOT closed"); window \(stillOpen ? "still open on the welcome screen" : "GONE")")
+            try? await Task.sleep(for: .milliseconds(600))
+            let closed = model.presentation == nil, presenterHidden = !window.isVisible, chooserBack = welcome?.isVisible == true
             captureScreenshots(suffix: "-welcome")
             model.open(url: url)
-            try? await Task.sleep(for: .milliseconds(400))
+            try? await Task.sleep(for: .seconds(1.5))   // a fresh deck: let its prefetch land before more steps
+            let reopened = window.isVisible && welcome?.isVisible == false && window.title == url.lastPathComponent && window.representedURL == url
+            print("CLOSEBUTTON \(closed && presenterHidden && chooserBack && reopened ? "OK" : "FAIL"): presenter filled its screen \(filled); deck closed \(closed); presenter hidden \(presenterHidden); chooser back \(chooserBack); reopened with the deck's title and proxy icon \(reopened)")
         }
-        if CommandLine.arguments.contains("-settings"), let model = (NSApp.delegate as? AppDelegate)?.model {
-            model.showSettings()
-            try? await Task.sleep(for: .milliseconds(500))
-            captureScreenshots(suffix: "-settings")
-            NSApp.windows.first(where: { $0.title == "Settings" })?.close()
+        if CommandLine.arguments.contains("-welcome"), let model = (NSApp.delegate as? AppDelegate)?.model {
+            // The chooser, as it comes back after a deck closes.
+            model.close()
+            try? await Task.sleep(for: .seconds(1))
+            captureScreenshots(suffix: "-chooser")
+            model.open(url: url)
+            try? await Task.sleep(for: .seconds(1.5))
+        }
+        if CommandLine.arguments.contains("-titlebar"), let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
+            // The system title is hidden and the content view extends under the title bar, where the SwiftUI
+            // strip draws the name centred; the screenshot shows it (the traffic lights are AppKit's, not captured).
+            let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+            let fullSize = window.contentView?.frame.height == window.frame.height
+            let ok = window.titleVisibility == .hidden && window.titlebarAppearsTransparent && fullSize && titlebarHeight > 20
+            print(String(format: "TITLEBAR %@: system title hidden %@, transparent %@, content under the title bar %@, title bar %.0f pt, title \"%@\", representedURL %@",
+                         ok ? "OK" : "FAIL", window.titleVisibility == .hidden ? "yes" : "no", window.titlebarAppearsTransparent ? "yes" : "no",
+                         fullSize ? "yes" : "no", titlebarHeight, window.title, window.representedURL?.lastPathComponent ?? "nil"))
+            captureScreenshots(suffix: "-titlebar")
         }
         if CommandLine.arguments.contains("-overview") {
             await press(keyCode: 48, character: "\t")                               // Tab: overview
+            try? await Task.sleep(for: .seconds(1))                                   // the current pane shrank: new render size
             await press(keyCode: 124, character: "\u{F703}")                        // → browse one frame on
             try? await Task.sleep(for: .seconds(1.5))                                 // thumbnails
             captureScreenshots(suffix: "-overview")
@@ -186,7 +219,17 @@ final class SelfTest {
         print("INK \(pointerShown && strokes.count == 1 && strokes[0].points.count == 21 && audienceHasInk == 1 ? "OK" : "FAIL"): pointer shown \(pointerShown), strokes \(strokes.count) with \(strokes.first?.points.count ?? 0) points, audience ink layers \(audienceHasInk), draw mode \(presentation.drawMode)")
         captureScreenshots(suffix: "-ink")
         try? await Task.sleep(for: .seconds(3.5))
-        print("INK fade: strokes after 3.5 s = \(presentation.state.ink.strokes.count) (expected 0)")
+        let kept = presentation.state.ink.strokes.count
+        _ = model.perform(.command(.clearInk))
+        let cleared = presentation.state.ink.strokes.count
+        view.mouseDown(with: event(.leftMouseDown, (0.3, 0.3)))
+        view.mouseDragged(with: event(.leftMouseDragged, (0.5, 0.3)))
+        view.mouseUp(with: event(.leftMouseUp, (0.5, 0.3)))
+        let drawnAgain = presentation.state.ink.strokes.count
+        _ = model.perform(.command(.next))
+        let afterAdvance = presentation.state.ink.strokes.count
+        _ = model.perform(.command(.previous))
+        print("INK persistence \(kept == 1 && cleared == 0 && drawnAgain == 1 && afterAdvance == 0 ? "OK" : "FAIL"): strokes after 3.5 s \(kept) (expected 1), after C \(cleared), drawn again \(drawnAgain), after the next build \(afterAdvance)")
         _ = model.perform(.toggleDraw)
     }
 
@@ -275,38 +318,46 @@ final class SelfTest {
     /// Feedback round 2: a ⌘ tap toggles the card; Esc and a click outside close it; a row click runs its command;
     /// ⌘ plus a key never flashes it.
     private func shortcutsCheck(model: AppModel, presentation: Presentation) async {
-        func tap() async {
+        func hold(_ ms: Int) async {
             postFlags([.command])
-            try? await Task.sleep(for: .milliseconds(60))
+            try? await Task.sleep(for: .milliseconds(ms))
+            let duringHold = model.shortcutOverlayVisible
             postFlags([])
-            try? await Task.sleep(for: .milliseconds(250))
+            try? await Task.sleep(for: .milliseconds(200))
+            lastHoldShowedBeforeRelease = duringHold
         }
-        await tap()
-        let shownByTap = model.shortcutOverlayVisible
+        await hold(100)
+        let tapIgnored = !model.shortcutOverlayVisible
+        await hold(750)
+        let shownByHold = lastHoldShowedBeforeRelease && model.shortcutOverlayVisible   // and still up after release
         captureScreenshots(suffix: "-shortcuts")
-        await tap()
+        await hold(100)
         let hiddenByTap = !model.shortcutOverlayVisible
-        await tap()
+        await hold(750)
         await press(keyCode: 53, character: "\u{1b}")
         let hiddenByEsc = !model.shortcutOverlayVisible
-        await tap()
+        await hold(750)
         let pageBefore = presentation.state.committedPage
         await click(on: presentation.currentSurface.view, at: (0.02, 0.02), awaitSample: false)   // outside the card
         try? await Task.sleep(for: .milliseconds(250))
         let hiddenByClick = !model.shortcutOverlayVisible, stayed = presentation.state.committedPage == pageBefore
         postFlags([.command])
-        await press(keyCode: 38, character: "j", modifiers: [.command])   // ⌘J: bound to nothing, so no state changes
+        try? await Task.sleep(for: .milliseconds(200))
+        await press(keyCode: 38, character: "j", modifiers: [.command])   // ⌘J: bound to nothing; cancels the hold
+        try? await Task.sleep(for: .milliseconds(500))
         postFlags([])
-        try? await Task.sleep(for: .milliseconds(250))
+        try? await Task.sleep(for: .milliseconds(200))
         let noFlash = !model.shortcutOverlayVisible
-        await tap()
+        await hold(750)
         if let next = ShortcutReference.shortcut(named: "Next build") { model.run(next) }
         try? await Task.sleep(for: .milliseconds(250))
         let rowRan = presentation.state.committedPage == pageBefore + 1 && !model.shortcutOverlayVisible
         if rowRan { _ = model.perform(.command(.previous)) }
-        let ok = shownByTap && hiddenByTap && hiddenByEsc && hiddenByClick && stayed && noFlash && rowRan
-        print("SHORTCUTS \(ok ? "OK" : "FAIL"): ⌘ tap shows \(shownByTap); second tap hides \(hiddenByTap); Esc hides \(hiddenByEsc); click outside hides \(hiddenByClick) without advancing \(stayed); ⌘J does not flash it \(noFlash); clicking the Next build row advanced and closed it \(rowRan)")
+        let ok = tapIgnored && shownByHold && hiddenByTap && hiddenByEsc && hiddenByClick && stayed && noFlash && rowRan
+        print("SHORTCUTS \(ok ? "OK" : "FAIL"): short tap ignored \(tapIgnored); 750 ms hold shows and release keeps it \(shownByHold); tap hides \(hiddenByTap); Esc hides \(hiddenByEsc); click outside hides \(hiddenByClick) without advancing \(stayed); ⌘J during a hold does not show it \(noFlash); clicking the Next build row advanced and closed it \(rowRan)")
     }
+
+    private var lastHoldShowedBeforeRelease = false
 
     /// Posts a click at a normalised point of a slide surface through the real event path; waits for the latency
     /// sample it produces when `awaitSample` is set.
@@ -369,27 +420,54 @@ final class SelfTest {
         let dir = URL(fileURLWithPath: CommandLine.arguments[index + 1])
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         for window in NSApp.windows where window.isVisible {
+            let kind = window is PresenterWindow ? "presenter"
+                : window is WelcomeWindow ? "welcome"
+                : window.title == "Settings" ? "settings"
+                : String(describing: type(of: window)).contains("Popover") ? "popover" : "audience"
+            let file = dir.appendingPathComponent(kind + suffix + ".png")
             guard let view = window.contentView, let layer = view.layer else { continue }
             let scale = window.backingScaleFactor
             let width = Int(view.bounds.width * scale), height = Int(view.bounds.height * scale)
-            guard width > 0, height > 0,
-                  let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-            else { continue }
-            ctx.scaleBy(x: scale, y: scale)
-            if view.isFlipped || layer.isGeometryFlipped {
-                ctx.translateBy(x: 0, y: view.bounds.height)
-                ctx.scaleBy(x: 1, y: -1)
+            guard width > 0, height > 0 else { continue }
+            func context() -> CGContext? {
+                guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+                else { return nil }
+                ctx.scaleBy(x: scale, y: scale)
+                if view.isFlipped || layer.isGeometryFlipped {
+                    ctx.translateBy(x: 0, y: view.bounds.height)
+                    ctx.scaleBy(x: 1, y: -1)
+                }
+                return ctx
             }
-            layer.render(in: ctx)
-            guard let image = ctx.makeImage() else { continue }
-            let kind = window is PresenterWindow ? "presenter"
-                : window.title == "Settings" ? "settings"
-                : String(describing: type(of: window)).contains("Popover") ? "popover" : "audience"
-            let name = kind + suffix + ".png"
-            let rep = NSBitmapImageRep(cgImage: image)
-            try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent(name))
+            // An NSScrollView fills its background with clear using copy compositing, which is harmless on
+            // screen (its own layer) but erases everything underneath in one flattened render. So each
+            // top-level sublayer is rendered on its own and the results are composited source-over.
+            guard let final = context() else { continue }
+            let sublayers = layer.sublayers ?? []
+            if sublayers.count > 1 {
+                let wasHidden = sublayers.map(\.isHidden)
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                for index in sublayers.indices where !wasHidden[index] {
+                    for (j, sub) in sublayers.enumerated() { sub.isHidden = j != index }
+                    guard let pass = context() else { continue }
+                    layer.render(in: pass)
+                    if let image = pass.makeImage() {
+                        final.saveGState()
+                        final.concatenate(final.ctm.inverted())   // draw in raw pixel space, unflipped
+                        final.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+                        final.restoreGState()
+                    }
+                }
+                for (sub, hidden) in zip(sublayers, wasHidden) { sub.isHidden = hidden }
+                CATransaction.commit()
+            } else {
+                layer.render(in: final)
+            }
+            guard let image = final.makeImage() else { continue }
+            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: file)
         }
     }
 

@@ -20,7 +20,7 @@ struct SettingsView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Section("Presenter") {
-                Toggle("Tap ⌘ on its own to show the keyboard shortcuts", isOn: $shortcutOverlay)
+                Toggle("Hold ⌘ for half a second to show the keyboard shortcuts", isOn: $shortcutOverlay)
                 Stepper("Notes size: \(Int(notesFontSize)) pt  (⌘+ / ⌘− while presenting)", value: $notesFontSize, in: 10...48, step: 2)
             }
             Section("Links") {

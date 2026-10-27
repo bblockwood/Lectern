@@ -3,10 +3,30 @@ import SwiftUI
 
 final class PresenterWindow: NSWindow {}
 
-/// The presenter window: SwiftUI chrome in an AppKit window, dark, with a remembered frame (SPEC §6.2).
+/// The first click on an inactive Lectern window acts at once instead of only activating the app.
+final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+extension NSWindow {
+    /// AppKit on this macOS puts a toolbar-less window's title at the leading edge. Lectern wants it centred
+    /// (feedback round 3), so the system title is hidden and `WindowTitleStrip` draws name and icon centred in
+    /// the (transparent) title bar area, which the content view now extends under. `title` and
+    /// `representedURL` stay set for the Window menu, Exposé and accessibility.
+    func useCentredTitleStrip() {
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+        styleMask.insert(.fullSizeContentView)
+    }
+}
+
+/// The presenter window: SwiftUI chrome in an AppKit window, dark (SPEC §6.2). It exists only while a deck is
+/// open: it fills the screen's visible area when a deck opens and hides when the deck closes, independent of the
+/// chooser window's size (feedback round 3). Its title bar carries the deck's name and proxy icon.
 @MainActor
 final class PresenterWindowController: NSWindowController, NSWindowDelegate {
     private let model: AppModel
+    private var hideAfterExitingFullScreen = false
 
     init(model: AppModel) {
         self.model = model
@@ -17,28 +37,50 @@ final class PresenterWindowController: NSWindowController, NSWindowDelegate {
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = .black
         window.title = "Lectern"
-        window.setFrameAutosaveName("PresenterWindow")
         window.collectionBehavior.insert(.fullScreenPrimary)
-        window.center()
+        window.useCentredTitleStrip()
         super.init(window: window)
         window.delegate = self
-        window.contentView = NSHostingView(rootView: PresenterRootView(model: model))
+        window.contentView = FirstClickHostingView(rootView: PresenterRootView(model: model))
         window.isReleasedWhenClosed = false
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not supported") }
 
-    /// The red button closes the deck and returns to the welcome screen (feedback round 1); closing the welcome
-    /// screen quits.
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard model.presentation != nil else { return true }
-        model.close()
-        return false
+    /// Fills the visible frame of `screen` (the chooser's screen, else the main one) and comes to the front.
+    func show(deck url: URL, on screen: NSScreen?) {
+        guard let window else { return }
+        window.title = url.lastPathComponent
+        window.representedURL = url
+        if !window.isVisible, let screen = screen ?? NSScreen.main {
+            window.setFrame(screen.visibleFrame, display: true)
+        }
+        window.makeKeyAndOrderFront(nil)
     }
 
-    func windowWillClose(_ notification: Notification) {
-        model.endPresenting()
-        NSApp.terminate(nil)
+    /// Hides the window; a full-screen window leaves full screen first and hides when that finishes.
+    func hide() {
+        guard let window else { return }
+        if window.styleMask.contains(.fullScreen) {
+            hideAfterExitingFullScreen = true
+            window.toggleFullScreen(nil)
+        } else {
+            window.orderOut(nil)
+        }
+        window.representedURL = nil
+        window.title = "Lectern"
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        guard hideAfterExitingFullScreen else { return }
+        hideAfterExitingFullScreen = false
+        window?.orderOut(nil)
+    }
+
+    /// The red button closes the deck (feedback round 1); the window itself stays around, hidden, for the next deck.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        model.close()
+        return false
     }
 }
