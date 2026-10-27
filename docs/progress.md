@@ -328,3 +328,52 @@ Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-t
 5. ⌃⌘F: full screen; ⌃⌘F again: back. The green button too.
 6. The buttons say Laser L, Draw D, Clear C; C clears, E does nothing.
 7. Tell me if ← inside the card's "Previous build" row, the countdown-from-start rule, or the keys-leave-the-card-up rule is not what you meant.
+
+## Feedback round 3 (2026-10-27, branch `feedback-3`)
+
+Ben's third round, eight items.
+
+### Plan
+
+1. Shortcut card: hold ⌘ for about half a second instead of a tap; it stays up after release.
+2. Setting a countdown starts the timer at once.
+3. Drawn strokes stay until C or the next build; no fade.
+4. The chooser is its own window (scrollable, title never cropped); the presenter window fills the screen when a deck opens, whatever the chooser's size.
+5. Title bar: deck name with proxy icon, centred.
+6. Notes vs Contents decided once on open (contents if the first slide has no notes), then only by the user.
+7. Overview: a more prominent selection outline.
+8. No links on the next-slide preview.
+
+### Feedback round 3 report (2026-10-27)
+
+1. **Hold ⌘.** `AppDelegate` starts a 500 ms task when ⌘ goes down alone and shows the card when it fires; the card stays after release. While it is up, pressing and releasing ⌘ alone closes it. A key, a click or another modifier cancels either, so ⌘-shortcuts never show it. Settings wording updated. Self-test: a 100 ms tap is ignored, a 750 ms hold shows and keeps it, a tap then hides it, plus the Esc, click-outside, ⌘J-during-hold and row-click checks from round 2.
+2. **Countdown starts on set.** `AppModel.setTargetDuration` starts the timer when it is not running. A deck's own pdfpc duration still waits for the first advance (SPEC §6.7).
+3. **Ink stays.** `Presentation.ephemeralInkLifetime` is nil: no fade, no prune loop; C clears, and the next build already cleared page-scoped ink. The hint under the slide says so. Self-test: a stroke is still there after 3.5 s, gone after C, and gone after the next build.
+4. **Two windows.** `WelcomeWindowController` (720×600, resizable, min 480×360) hosts the chooser, now a ScrollView centred when it fits so the title is never cropped. `PresenterWindowController` is created at launch but shown only when a deck opens, sized to the visible frame of the chooser's screen, and hidden (leaving full screen first if needed) when the deck closes; `AppModel.onDeckOpened/onDeckClosed` drive the swap. Closing the presenter closes the deck; closing the chooser quits. Both content views accept the first click on an inactive app. Self-test: the presenter fills its screen, closing swaps the windows, reopening restores the title and represented URL.
+5. **Title bar.** AppKit on this macOS leading-aligns the title (probe: 148 of 1512 pt) and offers no alignment API, so the presenter hides the system title and draws `WindowTitleStrip` (file icon + name, centred) in a transparent title bar over a full-size content view. The chooser keeps the standard title bar (see decisions).
+6. **Sticky Notes / Contents.** `AppModel.notesShowsContents` is decided in `open()` (outline present, first slide without notes and no split) and changed only by the headings or by writing a note. Self-test on `basic-169.pdf` (opens on Contents) and `pdfpc-notes.pdf` (opens on Notes): the choice survives moving between slides.
+7. **Overview selection**: 6 pt accent stroke, glow and accent-coloured label on the selected frame.
+8. **Preview links**: `SurfaceController` gives link rects only to the audience and current surfaces.
+
+Self-test additions: `-welcome` (captures the chooser after closing the deck), `-titlebar` (probes the title bar configuration), a composited capture that renders each top-level layer separately (an `NSScrollView` fills its background with clear using copy compositing, which erased everything beneath it in one flattened render), an activation warning, and skipping focus checks when another Lectern instance keeps this one inactive.
+
+Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-tests on `basic-169.pdf`, `overlays.pdf`, `pdfpc-notes.pdf` and `links-appendix.pdf` with no misses; screenshots of the chooser, the presenter with its title strip, the card, the contents tab and the overview.
+
+**Known issues**
+
+- The chooser's title "Lectern" stays leading-aligned (AppKit's layout); only the presenter has the centred strip.
+- The presenter's proxy icon is drawn, not AppKit's: no drag-to-Finder and no ⌘-click path menu.
+- A deck's own pdfpc duration still starts counting at the first advance, unlike a countdown you set yourself.
+- Strokes never fade now; a fade can come back as a setting (`ephemeralInkLifetime`).
+- With another Lectern instance running, the self-test's focus checks are skipped (the second instance cannot become active).
+
+**Ben device checklist (feedback round 3, no new hardware)**
+
+1. Hold ⌘ for half a second: the card appears and stays after you let go. Tap ⌘: it closes. A quick tap with nothing up does nothing. ⌘E, ⌘W: no card.
+2. Click the timer, type `5`, Return: it starts counting down immediately, green. Presentation ▸ Countdown ▸ 15 minutes: same.
+3. Press D, draw, wait: the stroke stays. Press C: gone. Draw, press →: gone.
+4. Launch: a modest "Lectern" chooser window. Shrink it: the title stays visible and the recents scroll. Open a deck: the presenter window fills the screen regardless of the chooser's size, the chooser disappears. Close the deck (red button or ⌘W): the chooser is back. Close the chooser: the app quits.
+5. The presenter's title bar shows the PDF icon and file name centred. Tell me if you also want the chooser's title centred (it would cost the in-app screenshots I verify with).
+6. `basic-169.pdf` (no notes): opens on Contents; move around: stays on Contents; click Notes: stays on Notes until you click Contents. `pdfpc-notes.pdf`: opens on Notes.
+7. Tab: the selected frame has a thick blue outline with a glow; the committed one is green.
+8. Hover over a link on the Next preview: plain arrow cursor; on the current slide: pointing hand.
