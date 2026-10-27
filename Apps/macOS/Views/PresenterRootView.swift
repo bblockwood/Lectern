@@ -63,8 +63,6 @@ struct PresenterRootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.12), value: model.shortcutOverlayVisible)
-        .centredTitleStrip(title: model.presentation?.document.url.lastPathComponent ?? "Lectern",
-                           fileURL: model.presentation?.document.url)
         .background(Color.black)
         .preferredColorScheme(.dark)
         .dropDestination(for: URL.self) { urls, _ in

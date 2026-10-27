@@ -8,21 +8,10 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-extension NSWindow {
-    /// AppKit on this macOS puts a toolbar-less window's title at the leading edge. Lectern wants it centred
-    /// (feedback round 3), so the system title is hidden and `WindowTitleStrip` draws name and icon centred in
-    /// the (transparent) title bar area, which the content view now extends under. `title` and
-    /// `representedURL` stay set for the Window menu, Exposé and accessibility.
-    func useCentredTitleStrip() {
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
-        styleMask.insert(.fullSizeContentView)
-    }
-}
-
 /// The presenter window: SwiftUI chrome in an AppKit window, dark (SPEC §6.2). It exists only while a deck is
 /// open: it fills the screen's visible area when a deck opens and hides when the deck closes, independent of the
-/// chooser window's size (feedback round 3). Its title bar carries the deck's name and proxy icon.
+/// chooser window's size (feedback round 3). Its title bar is AppKit's own, with the deck's name and a real
+/// proxy icon (`representedURL`): Ben prefers native behaviour over a centred, drawn title.
 @MainActor
 final class PresenterWindowController: NSWindowController, NSWindowDelegate {
     private let model: AppModel
@@ -38,7 +27,6 @@ final class PresenterWindowController: NSWindowController, NSWindowDelegate {
         window.backgroundColor = .black
         window.title = "Lectern"
         window.collectionBehavior.insert(.fullScreenPrimary)
-        window.useCentredTitleStrip()
         super.init(window: window)
         window.delegate = self
         window.contentView = FirstClickHostingView(rootView: PresenterRootView(model: model))

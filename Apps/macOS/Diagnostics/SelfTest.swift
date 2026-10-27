@@ -157,15 +157,13 @@ final class SelfTest {
             try? await Task.sleep(for: .seconds(1.5))
         }
         if CommandLine.arguments.contains("-titlebar"), let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
-            // The system title is hidden and the content view extends under the title bar, where the SwiftUI
-            // strip draws the name centred; the screenshot shows it (the traffic lights are AppKit's, not captured).
-            let titlebarHeight = window.frame.height - window.contentLayoutRect.height
-            let fullSize = window.contentView?.frame.height == window.frame.height
-            let ok = window.titleVisibility == .hidden && window.titlebarAppearsTransparent && fullSize && titlebarHeight > 20
-            print(String(format: "TITLEBAR %@: system title hidden %@, transparent %@, content under the title bar %@, title bar %.0f pt, title \"%@\", representedURL %@",
-                         ok ? "OK" : "FAIL", window.titleVisibility == .hidden ? "yes" : "no", window.titlebarAppearsTransparent ? "yes" : "no",
-                         fullSize ? "yes" : "no", titlebarHeight, window.title, window.representedURL?.lastPathComponent ?? "nil"))
-            captureScreenshots(suffix: "-titlebar")
+            // AppKit's own header: the deck's name as the title and a real proxy icon (NSThemeDocumentButton).
+            func views(_ v: NSView?) -> [NSView] { (v?.subviews ?? []).flatMap { [$0] + views($0) } }
+            let titlebar = window.standardWindowButton(.closeButton)?.superview?.superview
+            let all = views(titlebar)
+            let proxy = all.contains { String(describing: type(of: $0)).contains("DocumentButton") }
+            let titled = window.titleVisibility == .visible && window.title == url.lastPathComponent && window.representedURL == url
+            print("TITLEBAR \(titled && proxy ? "OK" : "FAIL"): system title \"\(window.title)\" \(window.titleVisibility == .visible ? "visible" : "hidden"); representedURL \(window.representedURL?.lastPathComponent ?? "nil"); proxy icon \(proxy ? "present" : "absent")")
         }
         if CommandLine.arguments.contains("-overview") {
             await press(keyCode: 48, character: "\t")                               // Tab: overview

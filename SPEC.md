@@ -189,7 +189,7 @@ Read all of these and merge them per page. Earlier sources take priority.
 
 - **Windows:**
   - Chooser: a modest window with Open, drag-and-drop and recents, like iWork's chooser (feedback round 3). It hides while a deck is open and returns when the deck closes; closing it quits.
-  - Presenter: exists only while a deck is open; fills the visible area of the chooser's screen when a deck opens, whatever the chooser's size. Its title bar shows the deck's icon and name centred (drawn by the app, since AppKit on macOS 26 puts a toolbar-less window's title at the leading edge).
+  - Presenter: exists only while a deck is open; fills the visible area of the chooser's screen when a deck opens, whatever the chooser's size. Its title bar is AppKit's own, with the deck's name and proxy icon laid out as the system does (leading on macOS 26).
   - Audience: borderless and full-screen on the target display. The cursor is hidden unless pointer mode is on or the mouse is actively over it.
 - **Auto-assignment:** the built-in display is the presenter and the largest external display is the audience. Remember choices per display (name plus resolution). Provide a swap shortcut.
 - **Single display:** rehearsal mode. The audience view becomes a resizable window, or can be hidden.
