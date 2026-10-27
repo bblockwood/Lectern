@@ -204,10 +204,12 @@ struct FrameCell: View {
                 }
             }
             .aspectRatio(aspect, contentMode: .fit)
-            .overlay(RoundedRectangle(cornerRadius: 4).stroke(isSelected ? Color.accentColor : (isCommitted ? .green : .clear), lineWidth: 3))
             .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(isSelected ? Color.accentColor : (isCommitted ? .green : .clear), lineWidth: isSelected ? 6 : 3))
+            .shadow(color: isSelected ? Color.accentColor.opacity(0.9) : .clear, radius: 12)
             HStack(spacing: 6) {
                 Text(frame.label).font(.system(size: Theme.small, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
                 if frame.buildCount > 1 { Text("\(frame.buildCount) builds").font(.system(size: Theme.small - 2)).foregroundStyle(.secondary) }
                 if isAppendix { Text("A").font(.system(size: Theme.small - 2, weight: .heavy)).foregroundStyle(.purple) }
                 Spacer(minLength: 0)

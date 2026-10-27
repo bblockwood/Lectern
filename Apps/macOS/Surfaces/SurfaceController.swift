@@ -113,7 +113,8 @@ final class SurfaceController {
 
     private func present(_ image: CGImage, for request: RenderRequest, hit: Bool) {
         view.show(image: image)
-        view.links = request.crop.isFull ? document.links(onPage: request.pageIndex) : []
+        // Links live on the audience and current surfaces only; the next-slide preview shows none (feedback round 3).
+        view.links = role != .preview && request.crop.isFull ? document.links(onPage: request.pageIndex) : []
         shown = request
         Latency.shared.contentsShown(role: role, hit: hit, page: request.pageIndex)
         if Latency.shared.measuresFrames { view.requestFrameCallback() }

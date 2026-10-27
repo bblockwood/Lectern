@@ -147,7 +147,7 @@ The remaining-frames count and the pace indicator use it. Beyond this page, the 
 ### 4.4 Outline and search
 
 - Show the PDF outline as a collapsible table of contents in the overview.
-- The notes pane doubles as the table of contents (feedback round 2): a Contents heading shows the outline with the current part highlighted and each entry's frame; clicking an entry jumps there. A frame without notes shows the contents on its own.
+- The notes pane doubles as the table of contents (feedback rounds 2 and 3): a Contents heading shows the outline with the current part highlighted and each entry's frame; clicking an entry jumps there. Which of the two shows is decided once when a deck opens (contents if the first slide has no notes) and then only by the presenter; it never flips from slide to slide.
 - Full-text search uses the PDF text layer. Results are grouped by frame. Selecting a result browses to it privately; Enter commits.
 
 ### 4.5 Transitions
@@ -187,9 +187,10 @@ Read all of these and merge them per page. Earlier sources take priority.
 
 ### 6.1 Displays
 
-- **Two windows:**
+- **Windows:**
+  - Chooser: a modest window with Open, drag-and-drop and recents, like iWork's chooser (feedback round 3). It hides while a deck is open and returns when the deck closes; closing it quits.
+  - Presenter: exists only while a deck is open; fills the visible area of the chooser's screen when a deck opens, whatever the chooser's size. Its title bar shows the deck's icon and name centred (drawn by the app, since AppKit on macOS 26 puts a toolbar-less window's title at the leading edge).
   - Audience: borderless and full-screen on the target display. The cursor is hidden unless pointer mode is on or the mouse is actively over it.
-  - Presenter.
 - **Auto-assignment:** the built-in display is the presenter and the largest external display is the audience. Remember choices per display (name plus resolution). Provide a swap shortcut.
 - **Single display:** rehearsal mode. The audience view becomes a resizable window, or can be hidden.
 - **Mirrored displays:** detect mirroring and warn that notes would be visible. Offer a button that opens Displays settings.
@@ -240,7 +241,7 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 | Draw / clear drawing | D / C |
 | Next build (also) | click on the current or next slide |
 | Full screen | ⌃⌘F |
-| Shortcut card | tap ⌘ alone (toggle); Esc or a click outside closes it; its rows are clickable |
+| Shortcut card | hold ⌘ alone for ~0.5 s; it stays up; a tap of ⌘, Esc or a click outside closes it; its rows are clickable |
 | Timer start-pause / reset | T / ⌥T |
 | Swap displays | ⌥⌘D |
 | Start presenting | ⌥⌘P, F5 |
@@ -258,7 +259,7 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 
 ### 6.7 Timer and pacing
 
-- Elapsed time starts at the first advance or at a manual start.
+- Elapsed time starts at the first advance or at a manual start. Setting a countdown by hand starts it at once (feedback round 3); a deck's own duration still waits for the first advance.
 - The target duration comes from pdfpc metadata, the sidecar, or the UI.
 - The time left is green while positive and red, counting up, once exhausted (feedback round 2). The frames-vs-time pace indicator (amber when behind) is not shown for now.
 - Section targets come in M6.
@@ -292,7 +293,7 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 
 - Store strokes in normalized coordinates of the slide crop rect, with width relative to slide height, so they look identical on every display.
 - Two modes:
-  - **Ephemeral:** fades after N seconds (default 3).
+  - **Ephemeral:** page-scoped; cleared by C or by leaving the page. On the Mac they do not fade (feedback round 3); the fade (N seconds) stays available as a setting for later.
   - **Persistent:** kept per page in the sidecar.
 - The audience mirrors strokes live by redrawing the vectors; never stream bitmaps.
 - PencilKit may be used for capture on iPad, but the canonical model is the app's own stroke type, shared with the Mac.

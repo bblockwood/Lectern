@@ -65,6 +65,12 @@ final class AppModel {
     private(set) var shortcutOverlayVisible = false
     /// Bumped to ask the status bar to open the countdown editor on the timer (menu "Custom…").
     private(set) var countdownEditorRequest = 0
+    /// The notes pane shows the contents instead of notes. Chosen once when a deck opens (contents if the first
+    /// slide has no notes), then only by the user (feedback round 3).
+    private(set) var notesShowsContents = false
+    /// The app delegate swaps the chooser and presenter windows on these (feedback round 3).
+    @ObservationIgnored var onDeckOpened: ((URL) -> Void)?
+    @ObservationIgnored var onDeckClosed: (() -> Void)?
     /// Notes font size in points, persisted per device (SPEC §5.2).
     var notesFontSize: Double {
         get { UserDefaults.standard.object(forKey: AppSettings.notesFontSizeKey) as? Double ?? Theme.notesDefault }
@@ -124,8 +130,10 @@ final class AppModel {
             }
             presentation.onNotice = { [weak self] banner in self?.show(banner, autoDismissAfter: banner.kind == .info ? 4 : nil) }
             for warning in presentation.notes.warnings { show(Banner(kind: .warning, text: warning)) }
+            notesShowsContents = !document.outline.isEmpty && presentation.currentNote == nil && presentation.notesSplit == .none
             recents.add(url)
             dismissBanners(kind: .error)
+            onDeckOpened?(url)
             log.notice("opened \(url.lastPathComponent, privacy: .public): \(document.pageCount) pages, \(document.frames.frameCount) frames")
         } catch {
             log.error("failed to open \(url.path, privacy: .public): \(String(describing: error), privacy: .public)")
@@ -150,11 +158,7 @@ final class AppModel {
         presentation?.flushSidecar()
         presentation?.stopWatching()
         presentation = nil
-    }
-
-    var windowTitle: String {
-        guard let presentation else { return "Lectern" }
-        return presentation.document.url.lastPathComponent
+        onDeckClosed?()
     }
 
     // MARK: - Actions
@@ -341,8 +345,16 @@ final class AppModel {
         return true
     }
 
+    /// Setting a countdown starts the timer at once if it is not already running (feedback round 3); a deck's
+    /// own duration still waits for the first advance.
     func setTargetDuration(_ target: TimeInterval?) {
-        presentation?.setTargetDuration(target)
+        guard let presentation else { return }
+        presentation.setTargetDuration(target)
+        if target != nil, !presentation.state.timer.isRunning { presentation.apply(.timerStart) }
+    }
+
+    func setNotesShowsContents(_ contents: Bool) {
+        notesShowsContents = contents
     }
 
     func setNotesEditing(_ editing: Bool) {
