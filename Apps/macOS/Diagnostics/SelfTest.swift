@@ -176,8 +176,10 @@ final class SelfTest {
             let slideStayed = presentation.state.committedPage == before && !presentation.state.isBrowsing
             await press(keyCode: 36, character: "\r")                               // Return: jump to the cursor
             let jumped = presentation.state.committedPage == presentation.document.frames.frames[presentation.document.frames.frame(containing: before).index + 1].firstPage
+            let stayedOpen = model.overviewVisible
+            await press(keyCode: 53, character: "\u{1b}")                           // Esc closes it
             let closed = !model.overviewVisible
-            print("OVERVIEW \(cursorMoved && slideStayed && jumped && closed ? "OK" : "FAIL"): → moved the cursor \(cursorMoved) while the slide stayed \(slideStayed); Return jumped to it \(jumped) and closed the overview \(closed)")
+            print("OVERVIEW \(cursorMoved && slideStayed && jumped && stayedOpen && closed ? "OK" : "FAIL"): → moved the cursor \(cursorMoved) while the slide stayed \(slideStayed); Return jumped to it \(jumped) with the overview still open \(stayedOpen); Esc closed it \(closed)")
             await press(keyCode: 51, character: "\u{7f}")                           // ⌫ back to where the jump started
         }
         for _ in 0..<forward { await press(keyCode: 123, character: "\u{F702}") }   // ← previous
