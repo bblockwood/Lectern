@@ -125,7 +125,8 @@ struct ShortcutRow: View {
             Text(shortcut.action).font(.system(size: 16)).fixedSize()
         }
         .padding(.vertical, 3).padding(.horizontal, 8)
-        .background(hovering && clickable ? Color.white.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        // Opaque, so the slide behind the card does not show through the highlighted row (feedback round 3).
+        .background(hovering && clickable ? Color(white: 0.22) : .clear, in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
         if clickable {
             Button { model.run(shortcut) } label: { content }
