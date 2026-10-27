@@ -2,8 +2,8 @@ import PresenterCore
 import SwiftUI
 
 /// Overview (SPEC §6.3): current slide on the left; outline, search and the frame grid on the right.
-/// A click on a frame, an outline entry or a search hit jumps there at once and closes the overview; arrows move
-/// a cursor without changing the slide, Return jumps to it, Esc closes.
+/// A click on a frame, an outline entry or a search hit jumps there at once; arrows move a cursor without
+/// changing the slide and Return jumps to it. The overview stays open until Tab or Esc.
 struct OverviewLayout: View {
     let model: AppModel
     let presentation: Presentation
@@ -92,8 +92,6 @@ struct OverviewPanel: View {
     private func commitFromSearch() {
         if let selectedHit, hits.indices.contains(selectedHit) {
             model.jump(to: hits[selectedHit].pageIndex)
-        } else {
-            model.setOverview(visible: false)
         }
     }
 }
@@ -146,7 +144,8 @@ struct SearchResults: View {
 }
 
 /// Grid of frames showing the last page of each (SPEC §4.1), labelled; the cursor is blue, the current frame green.
-/// A click jumps to the frame and closes the overview.
+/// A click jumps to the frame. Under each: the build count beside the label when there is more than one, an
+/// appendix mark, and a notes icon at the right when the frame has notes.
 struct FrameGrid: View {
     let model: AppModel
     let presentation: Presentation
@@ -165,7 +164,8 @@ struct FrameGrid: View {
                                       image: presentation.thumbnails.image(forFrame: frame.index),
                                       isSelected: frame.index == selectedFrame,
                                       isCommitted: frame.index == presentation.committedFrame.index,
-                                      isAppendix: presentation.document.isAppendix(page: frame.firstPage))
+                                      isAppendix: presentation.document.isAppendix(page: frame.firstPage),
+                                      hasNotes: frame.pages.contains { presentation.notes.table.note(for: $0, frames: presentation.document.frames) != nil })
                                 .frame(width: cellWidth)
                                 .onTapGesture { model.jump(to: frame.firstPage) }
                                 .id(frame.index)
@@ -188,6 +188,7 @@ struct FrameCell: View {
     let isSelected: Bool
     let isCommitted: Bool
     let isAppendix: Bool
+    let hasNotes: Bool
 
     var body: some View {
         VStack(spacing: 4) {
@@ -204,9 +205,20 @@ struct FrameCell: View {
             HStack(spacing: 6) {
                 Text(frame.label).font(.system(size: Theme.small, weight: .semibold))
                     .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-                if frame.buildCount > 1 { Text("\(frame.buildCount) builds").font(.system(size: Theme.small - 2)).foregroundStyle(.secondary) }
+                if frame.buildCount > 1 {
+                    Label("\(frame.buildCount)", systemImage: "rectangle.stack")
+                        .font(.system(size: Theme.small - 2)).foregroundStyle(.secondary)
+                        .help("\(frame.buildCount) builds")
+                        .accessibilityLabel("\(frame.buildCount) builds")
+                }
                 if isAppendix { Text("A").font(.system(size: Theme.small - 2, weight: .heavy)).foregroundStyle(.purple) }
                 Spacer(minLength: 0)
+                if hasNotes {
+                    Image(systemName: "note.text")
+                        .font(.system(size: Theme.small - 2)).foregroundStyle(.secondary)
+                        .help("Has notes")
+                        .accessibilityLabel("Has notes")
+                }
             }
         }
     }

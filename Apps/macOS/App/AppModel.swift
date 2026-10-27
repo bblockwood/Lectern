@@ -262,23 +262,20 @@ final class AppModel {
         overviewSelectedFrame = visible ? presentation?.currentFrame.index : nil
     }
 
-    /// Jump straight to `page` (a click on a frame, an outline entry or a search hit) and close the overview.
-    /// The audience follows at once; ⌫ returns to where the jump started.
+    /// Jump straight to `page` (a click on a frame, an outline entry or a search hit). The audience follows at
+    /// once; the overview stays open until Tab or Esc; ⌫ returns to where the jump started.
     func jump(to page: Int) {
         guard let presentation else { return }
         presentation.apply(.goToPage(page))
-        setOverview(visible: false)
+        if overviewVisible { overviewSelectedFrame = presentation.currentFrame.index }
     }
 
     /// Return in the overview: jump to the frame under the cursor.
     func commitOverviewSelection() {
         guard let presentation else { return }
         let frames = presentation.document.frames
-        if let index = overviewSelectedFrame, frames.frames.indices.contains(index) {
-            jump(to: frames.frames[index].firstPage)
-        } else {
-            setOverview(visible: false)
-        }
+        guard let index = overviewSelectedFrame, frames.frames.indices.contains(index) else { return }
+        jump(to: frames.frames[index].firstPage)
     }
 
     private func overviewMove(for command: Command) -> Int? {
