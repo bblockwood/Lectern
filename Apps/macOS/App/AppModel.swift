@@ -53,6 +53,9 @@ final class AppModel {
     private(set) var banners: [Banner] = []
     private(set) var rehearsalAudienceWindowVisible = false
     private(set) var overviewVisible = false
+    /// The overview's cursor (a frame index). Arrows move it without changing the slide; Return or a click
+    /// jumps there. Nothing in the overview previews privately any more (Ben found the frozen audience awkward).
+    private(set) var overviewSelectedFrame: Int?
     /// Digits typed for jump-by-number; shown as an overlay until Return or a timeout.
     private(set) var jumpBuffer = ""
     /// Bumped to ask the overview to focus its search field.
@@ -214,8 +217,7 @@ final class AppModel {
                     show(Banner(kind: .info, text: "No frame labelled \(label)."), autoDismissAfter: 2)
                 }
             } else if overviewVisible {
-                presentation.apply(.commitBrowse)
-                setOverview(visible: false)
+                commitOverviewSelection()
             } else {
                 presentation.apply(.next)
             }
@@ -257,22 +259,26 @@ final class AppModel {
     func setOverview(visible: Bool) {
         guard visible != overviewVisible else { return }
         overviewVisible = visible
-        if !visible, let presentation, presentation.state.isBrowsing {
-            presentation.apply(.cancelBrowse)
-        }
+        overviewSelectedFrame = visible ? presentation?.currentFrame.index : nil
     }
 
-    /// Browse privately to `page` from the overview (click or arrow keys).
-    func browse(to page: Int) {
+    /// Jump straight to `page` (a click on a frame, an outline entry or a search hit) and close the overview.
+    /// The audience follows at once; ⌫ returns to where the jump started.
+    func jump(to page: Int) {
         guard let presentation else { return }
-        if !presentation.state.isBrowsing { presentation.apply(.beginBrowse) }
-        presentation.apply(.browseTo(page))
+        presentation.apply(.goToPage(page))
+        setOverview(visible: false)
     }
 
-    /// Commit the browsed page (double-click, Return) and close the overview.
-    func commitBrowse() {
-        presentation?.apply(.commitBrowse)
-        setOverview(visible: false)
+    /// Return in the overview: jump to the frame under the cursor.
+    func commitOverviewSelection() {
+        guard let presentation else { return }
+        let frames = presentation.document.frames
+        if let index = overviewSelectedFrame, frames.frames.indices.contains(index) {
+            jump(to: frames.frames[index].firstPage)
+        } else {
+            setOverview(visible: false)
+        }
     }
 
     private func overviewMove(for command: Command) -> Int? {
@@ -283,13 +289,12 @@ final class AppModel {
         }
     }
 
+    /// Arrow keys move the overview's cursor; the slide does not change until Return.
     private func moveOverviewSelection(by delta: Int) {
         guard let presentation else { return }
-        let frames = presentation.document.frames
-        let current = frames.frame(containing: presentation.state.presenterPage).index
-        let target = min(max(current + delta, 0), frames.frameCount - 1)
-        guard target != current else { return }
-        browse(to: frames.frames[target].firstPage)
+        let count = presentation.document.frames.frameCount
+        let current = overviewSelectedFrame ?? presentation.currentFrame.index
+        overviewSelectedFrame = min(max(current + delta, 0), count - 1)
     }
 
     private func follow(link id: LinkID, in presentation: Presentation) {
@@ -316,7 +321,7 @@ final class AppModel {
         }
     }
 
-    /// Esc: clears typed digits, then closes the overview, then cancels a browse; twice within a second ends presenting.
+    /// Esc: clears typed digits, then closes the overview; twice within a second ends presenting.
     private func handleEscape() -> Bool {
         if !jumpBuffer.isEmpty {
             jumpBuffer = ""
@@ -325,11 +330,6 @@ final class AppModel {
         }
         if overviewVisible {
             setOverview(visible: false)
-            escapeArmedUntil = nil
-            return true
-        }
-        if let presentation, presentation.state.isBrowsing {
-            presentation.apply(.cancelBrowse)
             escapeArmedUntil = nil
             return true
         }

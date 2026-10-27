@@ -165,13 +165,20 @@ final class SelfTest {
             let titled = window.titleVisibility == .visible && window.title == url.lastPathComponent && window.representedURL == url
             print("TITLEBAR \(titled && proxy ? "OK" : "FAIL"): system title \"\(window.title)\" \(window.titleVisibility == .visible ? "visible" : "hidden"); representedURL \(window.representedURL?.lastPathComponent ?? "nil"); proxy icon \(proxy ? "present" : "absent")")
         }
-        if CommandLine.arguments.contains("-overview") {
+        if CommandLine.arguments.contains("-overview"), let model = (NSApp.delegate as? AppDelegate)?.model {
+            let before = presentation.state.committedPage
             await press(keyCode: 48, character: "\t")                               // Tab: overview
             try? await Task.sleep(for: .seconds(1))                                   // the current pane shrank: new render size
-            await press(keyCode: 124, character: "\u{F703}")                        // → browse one frame on
+            await press(keyCode: 124, character: "\u{F703}")                        // → moves the cursor only
             try? await Task.sleep(for: .seconds(1.5))                                 // thumbnails
             captureScreenshots(suffix: "-overview")
-            await press(keyCode: 53, character: "\u{1b}")                           // Esc: cancel + close
+            let cursorMoved = model.overviewSelectedFrame == presentation.document.frames.frame(containing: before).index + 1
+            let slideStayed = presentation.state.committedPage == before && !presentation.state.isBrowsing
+            await press(keyCode: 36, character: "\r")                               // Return: jump to the cursor
+            let jumped = presentation.state.committedPage == presentation.document.frames.frames[presentation.document.frames.frame(containing: before).index + 1].firstPage
+            let closed = !model.overviewVisible
+            print("OVERVIEW \(cursorMoved && slideStayed && jumped && closed ? "OK" : "FAIL"): → moved the cursor \(cursorMoved) while the slide stayed \(slideStayed); Return jumped to it \(jumped) and closed the overview \(closed)")
+            await press(keyCode: 51, character: "\u{7f}")                           // ⌫ back to where the jump started
         }
         for _ in 0..<forward { await press(keyCode: 123, character: "\u{F702}") }   // ← previous
         // A few frame jumps and a back, which may legitimately miss.
