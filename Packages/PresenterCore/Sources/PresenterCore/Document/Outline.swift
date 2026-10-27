@@ -37,6 +37,18 @@ public struct Outline: Hashable, Sendable {
         return result
     }
 
+    /// The entry the presenter is "in" at `page`: the last entry, in reading order, that starts at or before the
+    /// page. Nil before the first entry or when no entry has a page. Highlights the current part of a table of
+    /// contents (feedback round 2).
+    public func currentEntry(forPage page: Int) -> OutlineNode? {
+        var current: OutlineNode?
+        for entry in flattened {
+            guard let start = entry.node.pageIndex else { continue }
+            if start <= page { current = entry.node } else { break }
+        }
+        return current
+    }
+
     /// The first entry titled Appendix, Backup or Supplementary (case-insensitive, SPEC §4.2), depth-first.
     public func appendixEntry() -> OutlineNode? {
         let markers = ["appendix", "backup", "supplementary"]
