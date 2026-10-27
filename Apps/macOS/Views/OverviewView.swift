@@ -2,7 +2,8 @@ import PresenterCore
 import SwiftUI
 
 /// Overview (SPEC §6.3): current slide on the left; outline, search and the frame grid on the right.
-/// Everything here browses privately; Return (or double-click) commits, Esc cancels.
+/// A click on a frame, an outline entry or a search hit jumps there at once and closes the overview; arrows move
+/// a cursor without changing the slide, Return jumps to it, Esc closes.
 struct OverviewLayout: View {
     let model: AppModel
     let presentation: Presentation
@@ -28,14 +29,14 @@ struct OverviewPanel: View {
     @State private var selectedHit: Int? = nil
     @FocusState private var searchFocused: Bool
 
-    private var selectedFrame: Int { presentation.currentFrame.index }
+    private var selectedFrame: Int { model.overviewSelectedFrame ?? presentation.currentFrame.index }
 
     var body: some View {
         HStack(spacing: 8) {
             if !presentation.document.outline.isEmpty {
                 OutlineSidebar(outline: presentation.document.outline, frames: presentation.document.frames,
                                currentPage: presentation.state.presenterPage) { page in
-                    model.browse(to: page)
+                    model.jump(to: page)
                 }
                 .frame(width: 220)
             }
@@ -59,11 +60,7 @@ struct OverviewPanel: View {
                 if !query.isEmpty {
                     SearchResults(hits: hits, selected: selectedHit, frames: presentation.document.frames) { index in
                         selectedHit = index
-                        model.browse(to: hits[index].pageIndex)
-                    } commit: { index in
-                        selectedHit = index
-                        model.browse(to: hits[index].pageIndex)
-                        model.commitBrowse()
+                        model.jump(to: hits[index].pageIndex)
                     }
                     .frame(maxHeight: 220)
                 }
@@ -89,16 +86,15 @@ struct OverviewPanel: View {
 
     private func moveHit(_ delta: Int) {
         guard !hits.isEmpty else { return }
-        let next = min(max((selectedHit ?? -1) + delta, 0), hits.count - 1)
-        selectedHit = next
-        model.browse(to: hits[next].pageIndex)
+        selectedHit = min(max((selectedHit ?? -1) + delta, 0), hits.count - 1)
     }
 
     private func commitFromSearch() {
         if let selectedHit, hits.indices.contains(selectedHit) {
-            model.browse(to: hits[selectedHit].pageIndex)
+            model.jump(to: hits[selectedHit].pageIndex)
+        } else {
+            model.setOverview(visible: false)
         }
-        model.commitBrowse()
     }
 }
 
@@ -122,7 +118,6 @@ struct SearchResults: View {
     let selected: Int?
     let frames: FrameIndex
     let select: (Int) -> Void
-    let commit: (Int) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -138,7 +133,6 @@ struct SearchResults: View {
                         .padding(6)
                         .background(selected == index ? Color.accentColor.opacity(0.3) : .clear, in: RoundedRectangle(cornerRadius: 4))
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { commit(index) }
                         .onTapGesture { select(index) }
                         .id(index)
                     }
@@ -151,7 +145,8 @@ struct SearchResults: View {
     }
 }
 
-/// Grid of frames showing the last page of each (SPEC §4.1), labelled, with the browsed/committed frame highlighted.
+/// Grid of frames showing the last page of each (SPEC §4.1), labelled; the cursor is blue, the current frame green.
+/// A click jumps to the frame and closes the overview.
 struct FrameGrid: View {
     let model: AppModel
     let presentation: Presentation
@@ -172,8 +167,7 @@ struct FrameGrid: View {
                                       isCommitted: frame.index == presentation.committedFrame.index,
                                       isAppendix: presentation.document.isAppendix(page: frame.firstPage))
                                 .frame(width: cellWidth)
-                                .onTapGesture(count: 2) { model.browse(to: frame.firstPage); model.commitBrowse() }
-                                .onTapGesture { model.browse(to: frame.firstPage) }
+                                .onTapGesture { model.jump(to: frame.firstPage) }
                                 .id(frame.index)
                         }
                     }

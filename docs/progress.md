@@ -376,3 +376,9 @@ Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-t
 6. `basic-169.pdf` (no notes): opens on Contents; move around: stays on Contents; click Notes: stays on Notes until you click Contents. `pdfpc-notes.pdf`: opens on Notes.
 7. Tab: the selected frame has a thick blue outline with a glow; the committed one is green.
 8. Hover over a link on the Next preview: plain arrow cursor; on the current slide: pointing hand.
+
+### Follow-ups after round 3 (2026-10-27, `main`)
+
+- **Native title bar.** Ben prefers native Mac behaviour, so the drawn centred title went and AppKit's header with the real proxy icon stayed (see decisions).
+- **Opaque hover highlight** on the shortcut card's rows.
+- **Overview jumps directly** (branch `overview-direct`). Clicking a frame, an outline entry or a search hit goes there at once and closes the overview; the audience follows. Arrow keys move a cursor (blue) without changing the slide; the current frame stays green; Return jumps to the cursor; Esc closes. The private browse and its PREVIEW banner are gone from the Mac. ⌫ still returns to where the jump started. Self-test `-overview` checks that → moves only the cursor and Return jumps and closes.

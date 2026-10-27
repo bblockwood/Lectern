@@ -148,7 +148,7 @@ The remaining-frames count and the pace indicator use it. Beyond this page, the 
 
 - Show the PDF outline as a collapsible table of contents in the overview.
 - The notes pane doubles as the table of contents (feedback rounds 2 and 3): a Contents heading shows the outline with the current part highlighted and each entry's frame; clicking an entry jumps there. Which of the two shows is decided once when a deck opens (contents if the first slide has no notes) and then only by the presenter; it never flips from slide to slide.
-- Full-text search uses the PDF text layer. Results are grouped by frame. Selecting a result browses to it privately; Enter commits.
+- Full-text search uses the PDF text layer. Results are grouped by frame. On the Mac, clicking a result or pressing Enter on it jumps there at once (private browsing was dropped; Ben found the frozen audience awkward).
 
 ### 4.5 Transitions
 
@@ -212,8 +212,7 @@ Read all of these and merge them per page. Earlier sources take priority.
 ### 6.3 Overview and jumping
 
 - The overview opens with Tab. It shows a grid of frames with labels, an outline sidebar, and a search field.
-- Arrow keys and clicks browse **privately**. The presenter's current-slide view shows the browsed slide with a banner: "PREVIEW: audience sees Frame N".
-- Enter commits the browse and pushes history. Esc cancels it.
+- On the Mac (Ben, 2026-10-27): a click on a frame, an outline entry or a search hit jumps there at once, pushes history and closes the overview; the audience follows immediately. Arrow keys move a cursor without changing the slide; Enter jumps to the cursor; Esc closes. The private-browse commands (`beginBrowse`, `browseTo`, `commitBrowse`, `cancelBrowse`) stay in the protocol and reducer for a presenter-only preview on other platforms or remotes, but the Mac overview no longer uses them, so the "PREVIEW: audience sees Frame N" banner does not appear there.
 - Jump by number: typing digits then Return, from anywhere, goes to the frame with that label and pushes history. Return with no digits typed means `next`.
 
 ### 6.4 Pointer
