@@ -44,9 +44,9 @@ enum MainMenu {
         presentation.addItem(item("White Screen (W)", #selector(AppDelegate.toggleWhite(_:)), "", target))
         presentation.addItem(item("Freeze Audience (F)", #selector(AppDelegate.toggleFreeze(_:)), "", target))
         presentation.addItem(.separator())
-        presentation.addItem(item("Pointer Mode (L)", #selector(AppDelegate.togglePointer(_:)), "", target))
-        presentation.addItem(item("Draw Mode (D)", #selector(AppDelegate.toggleDraw(_:)), "", target))
-        presentation.addItem(item("Clear Ink (E)", #selector(AppDelegate.clearInk(_:)), "", target))
+        presentation.addItem(item("Laser Pointer (L)", #selector(AppDelegate.togglePointer(_:)), "", target))
+        presentation.addItem(item("Draw on Slide (D)", #selector(AppDelegate.toggleDraw(_:)), "", target))
+        presentation.addItem(item("Clear Drawing (C)", #selector(AppDelegate.clearInk(_:)), "", target))
         presentation.addItem(.separator())
         presentation.addItem(item("Edit Notes", #selector(AppDelegate.editNotes(_:)), "e", target))
         presentation.addItem(item("Bigger Notes", #selector(AppDelegate.notesLarger(_:)), "=", target))
@@ -55,7 +55,7 @@ enum MainMenu {
         presentation.addItem(.separator())
         presentation.addItem(item("Start/Pause Timer (T)", #selector(AppDelegate.toggleTimer(_:)), "", target))
         presentation.addItem(item("Reset Timer (⌥T)", #selector(AppDelegate.resetTimer(_:)), "", target))
-        let durations = NSMenu(title: "Target Duration")
+        let durations = NSMenu(title: "Countdown")
         for minutes in [0, 15, 20, 30, 45, 60, 90] {
             let i = item(minutes == 0 ? "None" : "\(minutes) minutes", #selector(AppDelegate.setTargetDuration(_:)), "", target)
             i.representedObject = minutes
@@ -63,10 +63,17 @@ enum MainMenu {
         }
         durations.addItem(.separator())
         durations.addItem(item("Custom…", #selector(AppDelegate.setTargetDuration(_:)), "", target))
-        let durationsItem = NSMenuItem(title: "Target Duration", action: nil, keyEquivalent: "")
+        let durationsItem = NSMenuItem(title: "Countdown", action: nil, keyEquivalent: "")
         durationsItem.submenu = durations
         presentation.addItem(durationsItem)
         main.addItem(submenu: presentation, title: "Presentation")
+
+        // AppKit manages the Enter/Exit Full Screen title of a toggleFullScreen: item (feedback round 2, ⌃⌘F).
+        let view = NSMenu(title: "View")
+        let fullScreen = NSMenuItem(title: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        fullScreen.keyEquivalentModifierMask = [.command, .control]
+        view.addItem(fullScreen)
+        main.addItem(submenu: view, title: "View")
 
         let window = NSMenu(title: "Window")
         window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")

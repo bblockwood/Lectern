@@ -8,7 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var presenterWindow: PresenterWindowController!
     private var keyMonitor: Any?
     private var flagsMonitor: Any?
-    private var shortcutOverlayTask: Task<Void, Never>?
+    private var mouseMonitor: Any?
+    /// ⌘ is down with nothing else; releasing it now counts as a tap (feedback round 2).
+    private var commandTapArmed = false
     private var selfTest: SelfTest?
     private var recentsMenu: NSMenu?
 
@@ -25,11 +27,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         presenterWindow.showWindow(nil)
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
-            self.hideShortcutOverlay()
+            self.commandTapArmed = false   // ⌘ plus a key is a shortcut, not a tap
+            if self.model.shortcutOverlayVisible, self.presenterIsKey, KeyMap.isEscape(event) {
+                self.model.setShortcutOverlay(visible: false)
+                return nil
+            }
             return self.handle(keyEvent: event) ? nil : event
         }
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
             self?.modifiersChanged(event)
+            return event
+        }
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            self?.commandTapArmed = false   // ⌘-click is not a tap either
             return event
         }
         NSApp.activate()
@@ -55,8 +65,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Keyboard
 
-    /// Every key press in the presenter window goes through `KeyMap`. Other windows (Settings) keep their keys,
-    /// as does text editing (M2 jump field, M3 notes editor). The audience window cannot become key.
+    private var presenterIsKey: Bool { NSApp.keyWindow == nil || NSApp.keyWindow is PresenterWindow }
+
+    /// Every key press in the presenter window goes through `KeyMap`. Other windows (Settings, the countdown
+    /// popover) keep their keys, as does text editing (M2 jump field, M3 notes editor). The audience window
+    /// cannot become key.
     private func handle(keyEvent event: NSEvent) -> Bool {
         if let keyWindow = NSApp.keyWindow {
             guard keyWindow is PresenterWindow else { return false }
@@ -67,27 +80,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return model.perform(action)
     }
 
-    /// Holding ⌘ on its own for a moment shows the shortcut overlay (feedback round 1). Releasing it, adding another
-    /// modifier or pressing any key hides it, so ⌘-shortcuts themselves never flash it.
+    /// A tap of ⌘ on its own (down, then up with no key or click in between) toggles the shortcut card
+    /// (feedback round 2). ⌘-shortcuts, ⌘-clicks and other modifiers never toggle it.
     private func modifiersChanged(_ event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
-        let presenterIsKey = NSApp.keyWindow == nil || NSApp.keyWindow is PresenterWindow
-        guard flags == [.command], presenterIsKey, model.presentation != nil, AppSettings.showsShortcutOverlay else {
-            hideShortcutOverlay()
-            return
+        if flags == [.command] {
+            let mayShow = model.presentation != nil && AppSettings.showsShortcutOverlay
+            commandTapArmed = presenterIsKey && (model.shortcutOverlayVisible || mayShow)
+        } else if flags.isEmpty, commandTapArmed {
+            commandTapArmed = false
+            model.setShortcutOverlay(visible: !model.shortcutOverlayVisible)
+        } else {
+            commandTapArmed = false
         }
-        shortcutOverlayTask?.cancel()
-        shortcutOverlayTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled, let self else { return }
-            self.model.setShortcutOverlay(visible: true)
-        }
-    }
-
-    private func hideShortcutOverlay() {
-        shortcutOverlayTask?.cancel()
-        shortcutOverlayTask = nil
-        if model.shortcutOverlayVisible { model.setShortcutOverlay(visible: false) }
     }
 
     // MARK: - Menu actions
@@ -122,11 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func resetTimer(_ sender: Any?) { _ = model.perform(.resetTimer) }
     @objc func openDisplaySettings(_ sender: Any?) { DisplayManager.openDisplaySettings() }
 
+    /// Presets set the countdown directly; "Custom…" opens the editor on the status bar's timer.
     @objc func setTargetDuration(_ sender: NSMenuItem) {
         if let minutes = sender.representedObject as? Int {
             model.setTargetDuration(minutes > 0 ? TimeInterval(minutes * 60) : nil)
         } else {
-            model.askForTargetDuration()
+            model.requestCountdownEditor()
         }
     }
 

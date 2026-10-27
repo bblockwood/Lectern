@@ -1,9 +1,18 @@
 import SwiftUI
 
+/// One row of the shortcut card. `perform` runs it when the row is clicked (feedback round 2); a row without one
+/// (typed digits) is plain text.
 struct Shortcut: Identifiable {
     let keys: String
     let action: String
+    let perform: (@MainActor (AppModel) -> Void)?
     var id: String { keys + action }
+
+    init(_ keys: String, _ action: String, perform: (@MainActor (AppModel) -> Void)? = nil) {
+        self.keys = keys
+        self.action = action
+        self.perform = perform
+    }
 }
 
 struct ShortcutGroup: Identifiable {
@@ -12,70 +21,119 @@ struct ShortcutGroup: Identifiable {
     var id: String { title }
 }
 
-/// What the hold-⌘ overlay lists. Mirrors `KeyMap` and `MainMenu`; keep the three in step.
+/// What the shortcut card lists, by column. Mirrors `KeyMap` and `MainMenu`; keep the three in step.
+@MainActor
 enum ShortcutReference {
-    static let groups: [ShortcutGroup] = [
-        ShortcutGroup(title: "Navigate", shortcuts: [
-            Shortcut(keys: "→ Space N PgDn", action: "Next build"),
-            Shortcut(keys: "← P PgUp", action: "Previous build"),
-            Shortcut(keys: "⇧→  ⇧←", action: "Next / previous frame"),
-            Shortcut(keys: "3 1 ⏎", action: "Go to frame 31"),
-            Shortcut(keys: "⌫  ⌘[", action: "Back to where you jumped from"),
-            Shortcut(keys: "Tab", action: "Overview on / off"),
-            Shortcut(keys: "⌘F", action: "Search the deck"),
-            Shortcut(keys: "Esc", action: "Close overview, cancel preview"),
+    static let columns: [[ShortcutGroup]] = [
+        [ShortcutGroup(title: "Navigate", shortcuts: [
+            Shortcut("→ Space N PgDn", "Next build") { _ = $0.perform(.command(.next)) },
+            Shortcut("← P PgUp", "Previous build") { _ = $0.perform(.command(.previous)) },
+            Shortcut("⇧→", "Next frame") { _ = $0.perform(.command(.nextFrame)) },
+            Shortcut("⇧←", "Previous frame") { _ = $0.perform(.command(.previousFrame)) },
+            Shortcut("3 1 ⏎", "Go to frame 31"),
+            Shortcut("⌫  ⌘[", "Back after a jump") { _ = $0.perform(.command(.back)) },
+            Shortcut("Tab", "Overview on / off") { _ = $0.perform(.toggleOverview) },
+            Shortcut("⌘F", "Search the deck") { _ = $0.perform(.focusSearch) },
+            Shortcut("Esc", "Close overview / preview") { _ = $0.perform(.escape) },
+        ])],
+        [ShortcutGroup(title: "Audience", shortcuts: [
+            Shortcut("B", "Black screen") { _ = $0.perform(.toggleAudience(.black)) },
+            Shortcut("W", "White screen") { _ = $0.perform(.toggleAudience(.white)) },
+            Shortcut("F", "Freeze the audience view") { _ = $0.perform(.toggleFreeze) },
+            Shortcut("⌥⌘P", "Start presenting") { _ = $0.perform(.startPresenting) },
+            Shortcut("Esc Esc", "End presenting") { $0.endPresenting() },
+            Shortcut("⌥⌘D", "Swap displays") { _ = $0.perform(.swapDisplays) },
         ]),
-        ShortcutGroup(title: "Audience", shortcuts: [
-            Shortcut(keys: "B  .", action: "Black screen"),
-            Shortcut(keys: "W", action: "White screen"),
-            Shortcut(keys: "F", action: "Freeze what the audience sees"),
-            Shortcut(keys: "⌥⌘P", action: "Start presenting"),
-            Shortcut(keys: "Esc Esc", action: "End presenting"),
-            Shortcut(keys: "⌥⌘D", action: "Swap displays"),
-        ]),
-        ShortcutGroup(title: "Tools", shortcuts: [
-            Shortcut(keys: "L", action: "Laser pointer"),
-            Shortcut(keys: "D", action: "Pen"),
-            Shortcut(keys: "E", action: "Clear ink"),
-            Shortcut(keys: "T  ⌥T", action: "Start / pause timer, reset"),
-            Shortcut(keys: "⌘E", action: "Edit notes"),
-            Shortcut(keys: "⌘+  ⌘−", action: "Notes size"),
-            Shortcut(keys: "⌘R", action: "Reload the deck"),
-            Shortcut(keys: "⌘O  ⌘W", action: "Open / close a deck"),
-            Shortcut(keys: "⌘,", action: "Settings"),
-        ]),
+         ShortcutGroup(title: "App", shortcuts: [
+            Shortcut("⌃⌘F", "Full screen") { $0.toggleFullScreen() },
+            Shortcut("⌘,", "Settings") { $0.showSettings() },
+            Shortcut("⌘O", "Open a deck") { $0.openPanel() },
+            Shortcut("⌘W", "Close the deck") { $0.close() },
+        ])],
+        [ShortcutGroup(title: "Tools", shortcuts: [
+            Shortcut("L", "Laser pointer") { _ = $0.perform(.togglePointer) },
+            Shortcut("D", "Draw on the slide") { _ = $0.perform(.toggleDraw) },
+            Shortcut("C", "Clear the drawing") { _ = $0.perform(.command(.clearInk)) },
+            Shortcut("T", "Start / pause the timer") { _ = $0.perform(.toggleTimer) },
+            Shortcut("⌥T", "Reset the timer") { _ = $0.perform(.resetTimer) },
+            Shortcut("⌘E", "Edit notes") { _ = $0.perform(.editNotes) },
+            Shortcut("⌘+  ⌘−", "Notes size"),
+            Shortcut("⌘R", "Reload the deck") { $0.presentation?.reloadDocument() },
+        ])],
     ]
+
+    static var groups: [ShortcutGroup] { columns.flatMap { $0 } }
+
+    /// The row whose description is `action`, for the self-test.
+    static func shortcut(named action: String) -> Shortcut? {
+        groups.flatMap(\.shortcuts).first { $0.action == action }
+    }
 }
 
-/// Translucent reference card shown while ⌘ is held (feedback round 1). Purely visual; it never takes input.
+/// The shortcut card (feedback rounds 1 and 2). A tap of ⌘ on its own shows it; it stays until ⌘ is tapped again,
+/// Esc is pressed, a row is clicked (which runs that command) or the backdrop is clicked. The backdrop takes the
+/// click so nothing underneath, such as a slide, reacts to it.
 struct ShortcutOverlay: View {
+    let model: AppModel
+
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Keyboard shortcuts").font(.system(size: 26, weight: .semibold, design: .rounded))
-            HStack(alignment: .top, spacing: 32) {
-                ForEach(ShortcutReference.groups) { group in
-                    VStack(alignment: .leading, spacing: 9) {
-                        Text(group.title.uppercased())
-                            .font(.system(size: Theme.small, weight: .bold)).foregroundStyle(.secondary)
-                            .padding(.bottom, 2)
-                        ForEach(group.shortcuts) { shortcut in
-                            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                                Text(shortcut.keys)
-                                    .font(.system(size: Theme.body, weight: .semibold, design: .rounded))
-                                    .frame(width: 170, alignment: .trailing)
-                                    .fixedSize()
-                                Text(shortcut.action).font(.system(size: Theme.body)).fixedSize()
+        ZStack {
+            Color.black.opacity(0.35)
+                .contentShape(Rectangle())
+                .onTapGesture { model.setShortcutOverlay(visible: false) }
+            VStack(spacing: 18) {
+                Text("Keyboard shortcuts").font(.system(size: 24, weight: .semibold, design: .rounded))
+                HStack(alignment: .top, spacing: 24) {
+                    ForEach(Array(ShortcutReference.columns.enumerated()), id: \.offset) { _, column in
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(column) { group in
+                                Text(group.title.uppercased())
+                                    .font(.system(size: Theme.small, weight: .bold)).foregroundStyle(.secondary)
+                                    .padding(.top, group.id == column.first?.id ? 0 : 14)
+                                    .padding(.bottom, 4).padding(.horizontal, 8)
+                                ForEach(group.shortcuts) { shortcut in
+                                    ShortcutRow(shortcut: shortcut, model: model)
+                                }
                             }
                         }
                     }
                 }
+                Text("Click a shortcut to run it. Tap ⌘, press Esc or click outside to close. Turn this off in Settings (⌘,).")
+                    .font(.system(size: Theme.small)).foregroundStyle(.tertiary)
             }
-            Text("Release ⌘ to dismiss. Turn this off in Settings (⌘,).").font(.system(size: Theme.small)).foregroundStyle(.tertiary)
+            .padding(24)
+            .background(.black.opacity(0.94), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.15)))
+            .onTapGesture {}   // clicks on the card itself (between rows) stay on the card
         }
-        .padding(30)
-        .background(.black.opacity(0.94), in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.15)))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .allowsHitTesting(false)
+    }
+}
+
+struct ShortcutRow: View {
+    let shortcut: Shortcut
+    let model: AppModel
+    @State private var hovering = false
+
+    var body: some View {
+        let clickable = shortcut.perform != nil
+        let content = HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(shortcut.keys)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .frame(width: 140, alignment: .trailing)
+                .fixedSize()
+            Text(shortcut.action).font(.system(size: 16)).fixedSize()
+        }
+        .padding(.vertical, 3).padding(.horizontal, 8)
+        .background(hovering && clickable ? Color.white.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        if clickable {
+            Button { model.run(shortcut) } label: { content }
+                .buttonStyle(.plain)
+                .onHover { hovering = $0 }
+                .accessibilityLabel(shortcut.action)
+        } else {
+            content
+        }
     }
 }

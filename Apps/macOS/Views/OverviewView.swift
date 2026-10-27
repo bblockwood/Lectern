@@ -33,7 +33,8 @@ struct OverviewPanel: View {
     var body: some View {
         HStack(spacing: 8) {
             if !presentation.document.outline.isEmpty {
-                OutlineSidebar(outline: presentation.document.outline, currentPage: presentation.state.presenterPage) { page in
+                OutlineSidebar(outline: presentation.document.outline, frames: presentation.document.frames,
+                               currentPage: presentation.state.presenterPage) { page in
                     model.browse(to: page)
                 }
                 .frame(width: 220)
@@ -103,36 +104,15 @@ struct OverviewPanel: View {
 
 struct OutlineSidebar: View {
     let outline: Outline
+    let frames: FrameIndex
     let currentPage: Int
     let select: (Int) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             PaneTitle("Outline")
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(outline.flattened, id: \.node.id) { entry in
-                        let isCurrent = entry.node.pageIndex.map { $0 == currentPage } ?? false
-                        Button {
-                            if let page = entry.node.pageIndex { select(page) }
-                        } label: {
-                            HStack {
-                                Text(entry.node.title.isEmpty ? "(untitled)" : entry.node.title)
-                                    .lineLimit(2)
-                                    .padding(.leading, CGFloat(entry.depth) * 14)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.vertical, 4).padding(.horizontal, 6)
-                            .background(isCurrent ? Color.accentColor.opacity(0.3) : .clear, in: RoundedRectangle(cornerRadius: 4))
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(entry.node.pageIndex == nil)
-                    }
-                }
-                .padding(4)
-            }
-            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            OutlineList(outline: outline, frames: frames, currentPage: currentPage, fontSize: Theme.body, select: select)
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }

@@ -61,8 +61,10 @@ final class AppModel {
     var overviewColumns = 4
     /// Inline notes editor open (SPEC §5.2).
     private(set) var notesEditing = false
-    /// The hold-⌘ shortcut reference card (feedback round 1).
+    /// The shortcut card: toggled by a tap of ⌘ (feedback rounds 1 and 2).
     private(set) var shortcutOverlayVisible = false
+    /// Bumped to ask the status bar to open the countdown editor on the timer (menu "Custom…").
+    private(set) var countdownEditorRequest = 0
     /// Notes font size in points, persisted per device (SPEC §5.2).
     var notesFontSize: Double {
         get { UserDefaults.standard.object(forKey: AppSettings.notesFontSizeKey) as? Double ?? Theme.notesDefault }
@@ -117,6 +119,9 @@ final class AppModel {
             for surface in [presentation.audienceSurface, presentation.currentSurface] {
                 surface.view.onLinkActivate = { [weak self] id in _ = self?.perform(.followLink(id)) }
             }
+            for surface in [presentation.currentSurface, presentation.previewSurface] {
+                surface.view.onClick = { [weak self] timestamp in self?.slideClicked(at: timestamp) }
+            }
             presentation.onNotice = { [weak self] banner in self?.show(banner, autoDismissAfter: banner.kind == .info ? 4 : nil) }
             for warning in presentation.notes.warnings { show(Banner(kind: .warning, text: warning)) }
             recents.add(url)
@@ -140,6 +145,7 @@ final class AppModel {
     func close() {
         endPresenting()
         overviewVisible = false
+        shortcutOverlayVisible = false
         jumpBuffer = ""
         presentation?.flushSidecar()
         presentation?.stopWatching()
@@ -343,24 +349,35 @@ final class AppModel {
         notesEditing = editing
     }
 
-    func askForTargetDuration() {
-        let alert = NSAlert()
-        alert.messageText = "Target duration"
-        alert.informativeText = "Minutes for the main talk."
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
-        if let target = presentation?.state.timer.target { field.stringValue = String(Int(target / 60)) }
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Set")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        if alert.runModal() == .alertFirstButtonReturn, let minutes = Int(field.stringValue), minutes > 0 {
-            setTargetDuration(TimeInterval(minutes * 60))
-        }
+    func requestCountdownEditor() {
+        guard presentation != nil else { return }
+        countdownEditorRequest += 1
     }
 
     func setShortcutOverlay(visible: Bool) {
         guard visible != shortcutOverlayVisible else { return }
         shortcutOverlayVisible = visible
+    }
+
+    /// A row of the shortcut card was clicked: close the card, then do what the key would do.
+    func run(_ shortcut: Shortcut) {
+        setShortcutOverlay(visible: false)
+        shortcut.perform?(self)
+    }
+
+    func toggleFullScreen() {
+        NSApp.windows.first { $0 is PresenterWindow }?.toggleFullScreen(nil)
+    }
+
+    /// A plain click on the current or next slide advances (feedback round 2). While the shortcut card is up the
+    /// click only closes it, in case it reached the slide underneath.
+    private func slideClicked(at timestamp: TimeInterval) {
+        if shortcutOverlayVisible {
+            setShortcutOverlay(visible: false)
+            return
+        }
+        Latency.shared.inputReceived(at: timestamp)
+        _ = perform(.command(.next))
     }
 
     func showSettings() {

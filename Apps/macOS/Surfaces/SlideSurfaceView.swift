@@ -16,6 +16,8 @@ final class SlideSurfaceView: NSView {
         didSet { if links.isEmpty != oldValue.isEmpty { window?.invalidateCursorRects(for: self) } }
     }
     var onLinkActivate: ((LinkID) -> Void)?
+    /// A click on the slide that hit no link and started no stroke, with the event timestamp (feedback round 2).
+    var onClick: ((TimeInterval) -> Void)?
 
     // Pointer and ink (SPEC §6.4, §8). Coordinates are normalised to the displayed slide image.
     var pointerTrackingEnabled = false
@@ -127,6 +129,8 @@ final class SlideSurfaceView: NSView {
         }
         if let link = link(at: point) {
             onLinkActivate?(link.id)
+        } else if let onClick {
+            onClick(event.timestamp)
         } else {
             super.mouseDown(with: event)
         }

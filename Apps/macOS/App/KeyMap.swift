@@ -3,6 +3,10 @@ import PresenterProtocol
 
 /// Default key map (SPEC §6.5), including what clickers send: Page Up/Down, B or `.`, F5 and Esc.
 enum KeyMap {
+    static func isEscape(_ event: NSEvent) -> Bool {
+        event.keyCode == 53 || event.charactersIgnoringModifiers == "\u{1b}"
+    }
+
     static func action(for event: NSEvent) -> AppAction? {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let shift = modifiers.contains(.shift)
@@ -57,7 +61,7 @@ enum KeyMap {
         case "t": return option ? .resetTimer : .toggleTimer
         case "l": return .togglePointer
         case "d": return .toggleDraw
-        case "e": return .command(.clearInk)
+        case "c": return .command(.clearInk)
         default: return nil
         }
     }
