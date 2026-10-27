@@ -147,14 +147,12 @@ The remaining-frames count and the pace indicator use it. Beyond this page, the 
 ### 4.4 Outline and search
 
 - Show the PDF outline as a collapsible table of contents in the overview.
+- The notes pane doubles as the table of contents (feedback round 2): a Contents heading shows the outline with the current part highlighted and each entry's frame; clicking an entry jumps there. A frame without notes shows the contents on its own.
 - Full-text search uses the PDF text layer. Results are grouped by frame. Selecting a result browses to it privately; Enter commits.
 
-### 4.5 Transitions (M9)
+### 4.5 Transitions
 
-- Honor `/Trans`: at least Dissolve/Fade. Map other styles to dissolve or none, per a setting.
-- Honor `/Dur` for auto-advance.
-- Provide a global switch that disables transitions.
-- Optional crossfade between builds: default off, ~120 ms.
+Dropped for now (Ben, 2026-10-27): pages replace each other instantly; `/Trans`, `/Dur` and crossfades between builds are ignored. `transitions.pdf` stays in the corpus as an ordinary deck. Revisit only if Ben asks.
 
 ---
 
@@ -206,7 +204,7 @@ Read all of these and merge them per page. Earlier sources take priority.
   - Notes: bottom right.
 - **Status bar:**
   - Frame label and total, build x/y.
-  - Elapsed time, wall clock, and remaining vs. target.
+  - The timer: elapsed time, or, once a countdown is set (pdfpc duration, sidecar, or by clicking the timer), the time left in its place: green while positive, red and counting up once exhausted (feedback round 2). The wall clock beside it.
   - Audience-mode indicator: LIVE, or FROZEN/BLACK/WHITE in amber or red.
 - Panes are resizable and the layout persists. Dark UI by default.
 
@@ -238,8 +236,11 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 | Jump to frame | digits + Return |
 | Black / white screen | B or `.` / W |
 | Freeze audience | F |
-| Pointer mode | L |
-| Draw mode / clear ink | D / E |
+| Laser pointer | L |
+| Draw / clear drawing | D / C |
+| Next build (also) | click on the current or next slide |
+| Full screen | ⌃⌘F |
+| Shortcut card | tap ⌘ alone (toggle); Esc or a click outside closes it; its rows are clickable |
 | Timer start-pause / reset | T / ⌥T |
 | Swap displays | ⌥⌘D |
 | Start presenting | ⌥⌘P, F5 |
@@ -259,7 +260,7 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 
 - Elapsed time starts at the first advance or at a manual start.
 - The target duration comes from pdfpc metadata, the sidecar, or the UI.
-- A pace indicator compares progress through the main-talk frames with the elapsed fraction of the target, shown green, amber or red.
+- The time left is green while positive and red, counting up, once exhausted (feedback round 2). The frames-vs-time pace indicator (amber when behind) is not shown for now.
 - Section targets come in M6.
 
 ---
@@ -463,5 +464,4 @@ PresenterCore unit tests must cover:
 - App name.
 - Personal/TestFlight only, or eventually the App Store?
 - Support Watches without double tap (button-only)?
-- Default for PDF transitions: on or off?
 - May URI links ever open a browser during a talk?
