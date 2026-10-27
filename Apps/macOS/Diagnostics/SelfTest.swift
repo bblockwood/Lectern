@@ -142,6 +142,7 @@ final class SelfTest {
             let closed = model.presentation == nil, presenterHidden = !window.isVisible, chooserBack = welcome?.isVisible == true
             captureScreenshots(suffix: "-welcome")
             model.open(url: url)
+            model.startPresenting()   // opening ends presenting; keep the audience surface as the measured one
             try? await Task.sleep(for: .seconds(1.5))   // a fresh deck: let its prefetch land before more steps
             let reopened = window.isVisible && welcome?.isVisible == false && window.title == url.lastPathComponent && window.representedURL == url
             print("CLOSEBUTTON \(closed && presenterHidden && chooserBack && reopened ? "OK" : "FAIL"): presenter filled its screen \(filled); deck closed \(closed); presenter hidden \(presenterHidden); chooser back \(chooserBack); reopened with the deck's title and proxy icon \(reopened)")
@@ -152,6 +153,7 @@ final class SelfTest {
             try? await Task.sleep(for: .seconds(1))
             captureScreenshots(suffix: "-chooser")
             model.open(url: url)
+            model.startPresenting()
             try? await Task.sleep(for: .seconds(1.5))
         }
         if CommandLine.arguments.contains("-titlebar"), let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
