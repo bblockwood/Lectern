@@ -35,3 +35,19 @@ That file is gitignored, so it has to be created on each machine.
 ## Layout
 
 See `CLAUDE.md` for the repo layout, conventions and gotchas, `docs/decisions.md` for design decisions, and `docs/spikes/` for the M0 prototype findings. The app icon's source lives in `Design/AppIcon/`; `swift Design/AppIcon/make-appicon.swift` rebuilds the asset catalog from it.
+
+## Releases
+
+`Scripts/release.sh` builds a Release `Lectern.app`, signs it with the hardened runtime, and wraps it in `dist/Lectern-<version>.dmg` with an Applications shortcut, ready to upload to a website. The version comes from `project.yml`.
+
+What a download needs to open without a Gatekeeper warning:
+
+1. A **Developer ID Application** certificate, which needs the paid Apple Developer Program. Create it in Xcode (Settings > Accounts > your team > Manage Certificates > + > Developer ID Application). The script uses it automatically when it is in the keychain; without it the DMG is signed with the development identity and other Macs show "Apple could not verify…" until the person allows it in System Settings > Privacy & Security.
+2. **Notarization.** Once, store credentials for `notarytool` (an app-specific password from appleid.apple.com, and the Team ID):
+
+       xcrun notarytool store-credentials Lectern --apple-id you@example.com --team-id TEAMID
+
+   Then build with `NOTARY_PROFILE=Lectern Scripts/release.sh`; the script submits the DMG, waits, and staples the ticket.
+
+Bump `CFBundleShortVersionString` and `CFBundleVersion` in `project.yml` for each release.
+
