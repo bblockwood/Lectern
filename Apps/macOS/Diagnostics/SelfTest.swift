@@ -112,12 +112,6 @@ final class SelfTest {
             let stuck = model.notesShowsContents
             print("CONTENTS sticky \(stuck ? "OK" : "FAIL"): opened showing \(openedWithContents ? "contents" : "notes") (first slide \(presentation.notes.table.note(for: 0, frames: presentation.document.frames) == nil ? "has no notes" : "has notes")); still contents after moving \(stuck)")
             model.setNotesShowsContents(false)
-            // The notes editor's Done button must not move the pane header (feedback round 2).
-            model.setNotesEditing(true)
-            try? await Task.sleep(for: .milliseconds(400))
-            captureScreenshots(suffix: "-editing")
-            model.setNotesEditing(false)
-            try? await Task.sleep(for: .milliseconds(200))
             let page = presentation.state.presenterPage
             let current = outline.currentEntry(forPage: page)
             print("CONTENTS outline entries \(outline.flattened.count); on page \(page + 1) the current entry is \(current.map { "\"\($0.title)\" (page \(($0.pageIndex ?? -1) + 1))" } ?? "none")")
@@ -169,18 +163,18 @@ final class SelfTest {
             let before = presentation.state.committedPage
             await press(keyCode: 48, character: "\t")                               // Tab: overview
             try? await Task.sleep(for: .seconds(1))                                   // the current pane shrank: new render size
-            await press(keyCode: 124, character: "\u{F703}")                        // → moves the cursor only
+            await press(keyCode: 124, character: "\u{F703}")                        // → is still the next build
             try? await Task.sleep(for: .seconds(1.5))                                 // thumbnails
             captureScreenshots(suffix: "-overview")
-            let cursorMoved = model.overviewSelectedFrame == presentation.document.frames.frame(containing: before).index + 1
-            let slideStayed = presentation.state.committedPage == before && !presentation.state.isBrowsing
-            await press(keyCode: 36, character: "\r")                               // Return: jump to the cursor
-            let jumped = presentation.state.committedPage == presentation.document.frames.frames[presentation.document.frames.frame(containing: before).index + 1].firstPage
+            let advanced = presentation.state.committedPage == before + 1 && !presentation.state.isBrowsing
+            await press(keyCode: 49, character: " ")                                  // Space too
+            let advancedAgain = presentation.state.committedPage == before + 2
             let stayedOpen = model.overviewVisible
             await press(keyCode: 53, character: "\u{1b}")                           // Esc closes it
             let closed = !model.overviewVisible
-            print("OVERVIEW \(cursorMoved && slideStayed && jumped && stayedOpen && closed ? "OK" : "FAIL"): → moved the cursor \(cursorMoved) while the slide stayed \(slideStayed); Return jumped to it \(jumped) with the overview still open \(stayedOpen); Esc closed it \(closed)")
-            await press(keyCode: 51, character: "\u{7f}")                           // ⌫ back to where the jump started
+            print("OVERVIEW \(advanced && advancedAgain && stayedOpen && closed ? "OK" : "FAIL"): → advanced the slide \(advanced), Space again \(advancedAgain), with the overview open \(stayedOpen); Esc closed it \(closed)")
+            await press(keyCode: 123, character: "\u{F702}")
+            await press(keyCode: 123, character: "\u{F702}")
         }
         for _ in 0..<forward { await press(keyCode: 123, character: "\u{F702}") }   // ← previous
         // A few frame jumps and a back, which may legitimately miss.

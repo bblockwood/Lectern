@@ -48,7 +48,6 @@ enum KeyMap {
             case "f": return .focusSearch
             case "=", "+": return .notesFontLarger
             case "-": return .notesFontSmaller
-            case "e": return .editNotes
             default: return nil   // other ⌘ shortcuts belong to the menu
             }
         }

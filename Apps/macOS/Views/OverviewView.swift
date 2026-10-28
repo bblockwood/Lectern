@@ -2,9 +2,9 @@ import PresenterCore
 import SwiftUI
 
 /// Overview (SPEC §6.3): the current slide stays exactly where the presenter layout puts it; the next-slide and
-/// notes column is replaced by search and a two-column grid of frames (feedback rounds 4 and 5). A click on a
-/// frame or a search hit jumps there at once; arrows move a cursor without changing the slide and Return jumps
-/// to it; Tab or Esc closes.
+/// notes column is replaced by search and a two-column grid of frames (feedback rounds 4 to 6). Every key keeps
+/// its presenting meaning, so the talk goes on with the overview open and the grid follows; a click on a frame
+/// or a search hit jumps there at once; Tab or Esc closes.
 struct OverviewLayout: View {
     let model: AppModel
     let presentation: Presentation
@@ -34,11 +34,16 @@ struct OverviewPanel: View {
     @State private var selectedHit: Int? = nil
     @FocusState private var searchFocused: Bool
 
-    private var selectedFrame: Int { model.overviewSelectedFrame ?? presentation.currentFrame.index }
+    private var selectedFrame: Int { presentation.currentFrame.index }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.paneSpacing) {
-            PaneTitle("Overview")
+            HStack {
+                PaneTitle("Overview")
+                Spacer()
+                OverviewToggle(model: model)
+            }
+            .frame(height: Theme.paneHeader)
             HStack {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search text (⌘F)", text: $query)
@@ -141,10 +146,10 @@ struct SearchResults: View {
     }
 }
 
-/// Two columns of frames showing the last page of each (SPEC §4.1), labelled. The cursor is blue; what the
-/// audience sees is ringed orange (the FROZEN colour, since that is when the two differ). A click jumps to the
-/// frame. Under each: the build count beside the label when there is more than one, an appendix mark, and a
-/// notes icon at the right when the frame has notes.
+/// Two columns of frames showing the last page of each (SPEC §4.1), labelled. The current frame is ringed
+/// blue; when the audience sees a different one (frozen), that one is ringed orange, the FROZEN colour. A click
+/// jumps to the frame. Under each: the build count beside the label when there is more than one, an appendix
+/// mark, and a notes icon at the right when the frame has notes.
 struct FrameGrid: View {
     let model: AppModel
     let presentation: Presentation
@@ -161,7 +166,7 @@ struct FrameGrid: View {
                         FrameCell(frame: frame, aspect: presentation.document.pages[frame.lastPage].aspectRatio,
                                   image: presentation.thumbnails.image(forFrame: frame.index),
                                   isSelected: frame.index == selectedFrame,
-                                  isAudience: frame.index == audienceFrame,
+                                  isAudience: frame.index == audienceFrame && frame.index != selectedFrame,
                                   isAppendix: presentation.document.isAppendix(page: frame.firstPage),
                                   hasNotes: frame.pages.contains { presentation.notes.table.note(for: $0, frames: presentation.document.frames) != nil })
                             .onTapGesture { model.jump(to: frame.firstPage) }
@@ -170,7 +175,7 @@ struct FrameGrid: View {
                 }
                 .padding(.horizontal, 4).padding(.vertical, 8)
             }
-            .onAppear { model.overviewColumns = FrameGrid.columns; proxy.scrollTo(selectedFrame, anchor: .center) }
+            .onAppear { proxy.scrollTo(selectedFrame, anchor: .center) }
             .onChange(of: selectedFrame) { _, frame in withAnimation(.easeInOut(duration: 0.1)) { proxy.scrollTo(frame) } }
         }
     }
@@ -198,7 +203,6 @@ struct FrameCell: View {
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(isSelected ? Color.accentColor : (isAudience ? .orange : .clear), lineWidth: isSelected ? 6 : 4))
             HStack(spacing: 6) {
                 Text(frame.label).font(.system(size: Theme.small, weight: .semibold))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
                 if frame.buildCount > 1 {
                     Label("\(frame.buildCount)", systemImage: "rectangle.stack")
                         .font(.system(size: Theme.small - 2)).foregroundStyle(.secondary)

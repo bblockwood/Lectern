@@ -28,9 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         welcomeWindow.show()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
-            if self.model.shortcutOverlayVisible, self.presenterIsKey, KeyMap.isEscape(event) {
-                self.model.setShortcutOverlay(visible: false)
-                return nil
+            if self.model.shortcutOverlayVisible, self.presenterIsKey {
+                self.model.setShortcutOverlay(visible: false)   // any key closes the card (feedback round 6)
+                if KeyMap.isEscape(event) || KeyMap.action(for: event) == .toggleShortcutCard { return nil }
             }
             return self.handle(keyEvent: event) ? nil : event
         }
@@ -116,7 +116,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func togglePointer(_ sender: Any?) { _ = model.perform(.togglePointer) }
     @objc func toggleDraw(_ sender: Any?) { _ = model.perform(.toggleDraw) }
     @objc func clearInk(_ sender: Any?) { _ = model.perform(.command(.clearInk)) }
-    @objc func editNotes(_ sender: Any?) { _ = model.perform(.editNotes) }
     @objc func notesLarger(_ sender: Any?) { _ = model.perform(.notesFontLarger) }
     @objc func notesSmaller(_ sender: Any?) { _ = model.perform(.notesFontSmaller) }
     @objc func reloadDeck(_ sender: Any?) { model.presentation?.reloadDocument() }
@@ -173,19 +172,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case #selector(toggleDraw(_:)):
             item.state = model.presentation?.drawMode == true ? .on : .off
             return model.presentation != nil
-        case #selector(editNotes(_:)):
-            item.state = model.notesEditing ? .on : .off
-            return model.presentation != nil
         case #selector(toggleShortcutCard(_:)):
             item.state = model.shortcutOverlayVisible ? .on : .off
             return model.presentation != nil
         case #selector(closeDocument(_:)):
             let otherWindowIsKey = NSApp.keyWindow.map { !($0 is PresenterWindow) } ?? false
             return model.presentation != nil || otherWindowIsKey
+        case #selector(toggleBlack(_:)), #selector(toggleWhite(_:)), #selector(toggleFreeze(_:)):
+            return model.isPresenting   // audience modes mean nothing without an audience window
         case #selector(nextBuild(_:)), #selector(previousBuild(_:)), #selector(nextFrame(_:)),
-             #selector(previousFrame(_:)), #selector(goBack(_:)), #selector(toggleBlack(_:)), #selector(toggleWhite(_:)),
-             #selector(toggleFreeze(_:)), #selector(toggleTimer(_:)), #selector(resetTimer(_:)), #selector(clearInk(_:)),
-             #selector(notesLarger(_:)), #selector(notesSmaller(_:)), #selector(reloadDeck(_:)):
+             #selector(previousFrame(_:)), #selector(goBack(_:)), #selector(toggleTimer(_:)), #selector(resetTimer(_:)),
+             #selector(clearInk(_:)), #selector(notesLarger(_:)), #selector(notesSmaller(_:)), #selector(reloadDeck(_:)):
             return model.presentation != nil
         case #selector(setTargetDuration(_:)):
             if let minutes = item.representedObject as? Int {

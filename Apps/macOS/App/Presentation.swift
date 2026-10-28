@@ -117,17 +117,6 @@ final class Presentation {
     /// The note for the presenter's page, with the frame fallback.
     var currentNote: PageNote? { notes.table.note(for: state.presenterPage, frames: document.frames) }
 
-    func userNoteText(forPage page: Int) -> String {
-        sidecar.userNote(forPage: page)?.text ?? ""
-    }
-
-    func setUserNote(_ text: String, forPage page: Int) {
-        let label = document.frames.frame(containing: page).label
-        sidecar.setUserNote(text, forPage: page, frameLabel: label)
-        reassembleNotes()
-        scheduleSidecarSave()
-    }
-
     private func reassembleNotes() {
         notes = NotesLoader.assemble(document: document, sidecarNotes: sidecar.notesByPage, pdfpcFile: notes.pdfpcFile,
                                      embedded: notes.embedded, pptx: notes.pptx)

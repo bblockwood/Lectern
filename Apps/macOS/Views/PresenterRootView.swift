@@ -92,7 +92,12 @@ struct PresenterLayout: View {
                 }
                 VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: Theme.paneSpacing) {
-                        PaneTitle(presentation.nextPage == nil ? "Next: end of deck" : "Next")
+                        HStack {
+                            PaneTitle(presentation.nextPage == nil ? "Next: end of deck" : "Next")
+                            Spacer()
+                            OverviewToggle(model: model)
+                        }
+                        .frame(height: Theme.paneHeader)
                         FittedSurface(view: presentation.previewSurface.view, aspect: presentation.nextSlideAspectRatio)
                     }
                     .frame(height: max(120, geo.size.height * verticalFraction))
@@ -131,7 +136,7 @@ struct CurrentSlidePane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.paneSpacing) {
-            PaneTitle("Current")
+            HStack { PaneTitle("Current"); Spacer() }.frame(height: Theme.paneHeader)
             GeometryReader { geo in
                 let available = CGSize(width: geo.size.width, height: max(1, geo.size.height - barHeight - Theme.paneSpacing))
                 let fitted = Theme.fit(aspect: presentation.currentSlideAspectRatio, in: available)
@@ -203,7 +208,7 @@ struct ModeBar: View {
         } else if presentation.drawMode {
             Text("Draw on the slide; C clears, so does the next build").font(.system(size: Theme.small)).foregroundStyle(.secondary)
         } else {
-            Text("Click the slide for the next build").font(.system(size: Theme.small)).foregroundStyle(.tertiary)
+            Text("Click to advance").font(.system(size: Theme.small)).foregroundStyle(.secondary)
         }
     }
 }
@@ -215,22 +220,24 @@ struct ModeButton: View {
     let color: Color
     let isOn: Bool
     let action: () -> Void
+    /// Small enough for a pane header (the Overview toggle).
+    var compact = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: compact ? 6 : 8) {
                 Image(systemName: symbol)
                 if !title.isEmpty { Text(title).fixedSize() }
                 if !key.isEmpty {
                     Text(key)
-                        .font(.system(size: Theme.small, weight: .semibold, design: .rounded))
+                        .font(.system(size: compact ? 11 : Theme.small, weight: .semibold, design: .rounded))
                         .fixedSize()
-                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .padding(.horizontal, compact ? 4 : 6).padding(.vertical, compact ? 1 : 2)
                         .background((isOn ? Color.black : Color.white).opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
                 }
             }
-            .font(.system(size: Theme.body, weight: .semibold))
-            .padding(.horizontal, 14).padding(.vertical, 8)
+            .font(.system(size: compact ? Theme.small : Theme.body, weight: .semibold))
+            .padding(.horizontal, compact ? 9 : 14).padding(.vertical, compact ? 3 : 8)
             .background(isOn ? color.opacity(0.9) : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
             .foregroundStyle(isOn ? .black : .white)
             .contentShape(RoundedRectangle(cornerRadius: 8))
@@ -238,6 +245,17 @@ struct ModeButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(title.isEmpty ? symbol : title)
         .accessibilityValue(isOn ? "on" : "off")
+    }
+}
+
+/// Top-right button that enters the overview and stays lit while in it (feedback round 6); Tab does the same.
+struct OverviewToggle: View {
+    let model: AppModel
+
+    var body: some View {
+        ModeButton(title: "Overview", key: "Tab", symbol: "square.grid.2x2", color: .accentColor, isOn: model.overviewVisible,
+                   action: { model.setOverview(visible: !model.overviewVisible) }, compact: true)
+            .help(model.overviewVisible ? "Back to the next slide and notes (Tab)" : "All frames at a glance; keys keep presenting (Tab)")
     }
 }
 
@@ -271,59 +289,35 @@ struct PaneTab: View {
     }
 }
 
-/// Notes for the presenter's page (SPEC §5.2): Markdown text from the merged sources, the rendered notes
-/// half of a second-screen deck, or an inline editor that writes to the sidecar. The pane doubles as the table
-/// of contents (feedback rounds 2 and 3): the Contents heading switches to the PDF outline with the current
-/// part highlighted. Which one shows is decided once when the deck opens and then only by the user.
+/// Notes for the presenter's page (SPEC §5.2): Markdown text from the merged sources or the rendered notes
+/// half of a second-screen deck. The pane doubles as the table of contents (feedback rounds 2 and 3): the
+/// Contents heading switches to the PDF outline with the current part highlighted. Which one shows is decided
+/// once when the deck opens and then only by the user. The inline editor is gone for now (feedback round 6):
+/// notes that come from a LaTeX workflow looked editable but were not saved back.
 struct NotesPane: View {
     let model: AppModel
     let presentation: Presentation
-    @State private var draft = ""
-    @State private var editingPage: Int? = nil
 
     var body: some View {
         let page = presentation.state.presenterPage
         let note = presentation.currentNote
         let outline = presentation.document.outline
-        let contentsShown = !model.notesEditing && !outline.isEmpty && model.notesShowsContents
+        let contentsShown = !outline.isEmpty && model.notesShowsContents
         VStack(alignment: .leading, spacing: Theme.paneSpacing) {
             HStack(spacing: 14) {
-                PaneTab(text: "Notes", active: !contentsShown) {
-                    model.setNotesShowsContents(false)
-                }
+                PaneTab(text: "Notes", active: !contentsShown) { model.setNotesShowsContents(false) }
                 if !outline.isEmpty {
-                    PaneTab(text: "Contents", active: contentsShown) {
-                        if model.notesEditing { finishEditing(page: page) }
-                        model.setNotesShowsContents(true)
-                    }
+                    PaneTab(text: "Contents", active: contentsShown) { model.setNotesShowsContents(true) }
                 }
                 Spacer()
-                if model.notesEditing {
-                    Button("Done") { finishEditing(page: page) }.keyboardShortcut(.defaultAction).controlSize(.small)
-                } else if !contentsShown {
-                    if let source = note?.source {
-                        Text("from \(source.displayName)").font(.system(size: Theme.small)).foregroundStyle(.tertiary)
-                    }
-                    Button("Edit (⌘E)") { model.setNotesEditing(true) }
-                        .buttonStyle(.plain).font(.system(size: Theme.small)).foregroundStyle(.secondary)
+                if !contentsShown, let source = note?.source {
+                    Text("from \(source.displayName)").font(.system(size: Theme.small)).foregroundStyle(.tertiary)
                 }
             }
             .frame(height: Theme.paneHeader)
             ZStack {
                 RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.05))
-                if model.notesEditing {
-                    TextEditor(text: $draft)
-                        .font(.system(size: model.notesFontSize))
-                        .scrollContentBackground(.hidden)
-                        .padding(6)
-                        .onAppear { draft = presentation.userNoteText(forPage: page); editingPage = page }
-                        .onChange(of: page) { _, newPage in
-                            if let editingPage { presentation.setUserNote(draft, forPage: editingPage) }
-                            draft = presentation.userNoteText(forPage: newPage)
-                            editingPage = newPage
-                        }
-                        .onDisappear { if let editingPage { presentation.setUserNote(draft, forPage: editingPage) } }
-                } else if contentsShown {
+                if contentsShown {
                     OutlineList(outline: outline, frames: presentation.document.frames, currentPage: page,
                                 fontSize: CGFloat(model.notesFontSize) * 0.85) { target in
                         _ = model.perform(.command(.goToPage(target)))
@@ -338,7 +332,7 @@ struct NotesPane: View {
                 } else if presentation.notesSplit != .none {
                     SurfaceHost(view: presentation.notesSurface.view).padding(4)
                 } else {
-                    Text("No notes for this frame. ⌘E to write some.")
+                    Text("No notes for this frame.")
                         .font(.system(size: Theme.body))
                         .foregroundStyle(.tertiary).multilineTextAlignment(.center).padding()
                 }
@@ -346,13 +340,6 @@ struct NotesPane: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .id(model.notesFontTick)
-    }
-
-    private func finishEditing(page: Int) {
-        presentation.setUserNote(draft, forPage: editingPage ?? page)
-        model.setNotesEditing(false)
-        // A note was just written: show it rather than snapping back to the contents.
-        if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { model.setNotesShowsContents(false) }
     }
 }
 
@@ -367,6 +354,7 @@ struct OutlineList: View {
 
     var body: some View {
         let currentID = outline.currentEntry(forPage: currentPage)?.id
+        let shadowed = OutlineList.shadowedEntries(in: outline)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
@@ -380,7 +368,7 @@ struct OutlineList: View {
                                     .lineLimit(2)
                                     .padding(.leading, CGFloat(entry.depth) * fontSize * 0.9)
                                 Spacer(minLength: 8)
-                                if let page = entry.node.pageIndex {
+                                if let page = entry.node.pageIndex, !shadowed.contains(entry.node.id) {
                                     Text(frames.frame(containing: page).label)
                                         .font(.system(size: fontSize * 0.8)).monospacedDigit()
                                         .foregroundStyle(isCurrent ? .primary : .tertiary)
@@ -402,6 +390,18 @@ struct OutlineList: View {
                 if let id { proxy.scrollTo(id, anchor: .center) }
             }
         }
+    }
+
+    /// Entries that can never be the current part: a section whose first subsection starts on the same page
+    /// (the subsection wins), so showing a frame number for them would promise a stop that never comes.
+    static func shadowedEntries(in outline: Outline) -> Set<Int> {
+        let entries = outline.flattened
+        var shadowed = Set<Int>()
+        for (index, entry) in entries.enumerated() {
+            guard let page = entry.node.pageIndex else { continue }
+            if index + 1 < entries.count, entries[index + 1].node.pageIndex == page { shadowed.insert(entry.node.id) }
+        }
+        return shadowed
     }
 }
 
@@ -612,6 +612,7 @@ struct StatusBar: View {
     @ViewBuilder
     private func audienceIndicator(presentation: Presentation) -> some View {
         let mode: (String, Color)? = {
+            guard model.isPresenting else { return nil }   // no audience window, no mode to show
             switch presentation.state.audienceMode {
             case .live: return nil
             case .frozen: return ("FROZEN", .orange)
