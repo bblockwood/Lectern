@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Lectern app icon</title>
+  <rect width="1024" height="1024" fill="#0736A8"/>
+  <g fill="#FFFFFF">
+    <path d="M254 357 Q246 360 241 371 L228 395 Q220 410 233 418 Q238 422 246 421 L778 351 Q794 349 789 333 L758 272 Q754 261 743 265 Z"/>
+    <path d="M489 406 L531 400 L531 756 L489 756 Z"/>
+    <rect x="317" y="756" width="390" height="43" rx="21.5"/>
+  </g>
+</svg>

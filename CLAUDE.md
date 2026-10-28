@@ -23,6 +23,7 @@ Apps/macOS/  Apps/iOS/  Apps/watchOS/
 Spikes/                     M0 prototypes, never shipped
 Fixtures/src/               LaTeX sources for the test corpus; Fixtures/*.pdf are built outputs
 docs/                       progress.md, decisions.md, spikes/
+Design/AppIcon/             Ben's icon artwork and make-appicon.swift, which builds Apps/macOS/Assets.xcassets from it
 ```
 
 ## Commands

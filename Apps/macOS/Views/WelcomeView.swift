@@ -10,6 +10,9 @@ struct WelcomeView: View {
         GeometryReader { geo in
             ScrollView {
                 VStack(spacing: 24) {
+                    Image(nsImage: NSImage(named: NSImage.applicationIconName) ?? NSApp.applicationIconImage)
+                        .resizable().interpolation(.high)
+                        .frame(width: 128, height: 128)
                     Text("Lectern").font(.system(size: 44, weight: .semibold))
                     Text("Drop a PDF here, or open one.").font(.system(size: Theme.body)).foregroundStyle(.secondary)
                     Button("Open PDF…") { model.openPanel() }
