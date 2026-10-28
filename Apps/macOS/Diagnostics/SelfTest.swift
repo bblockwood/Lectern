@@ -150,6 +150,19 @@ final class SelfTest {
             model.startPresenting()
             try? await Task.sleep(for: .seconds(1.5))
         }
+        if CommandLine.arguments.contains("-escape"), let model = (NSApp.delegate as? AppDelegate)?.model {
+            // One Esc arms the Present button (orange "Esc again to end"); it disarms after a second; two end presenting.
+            await press(keyCode: 53, character: "\u{1b}")
+            let armed = model.escapeArmed && model.isPresenting
+            captureScreenshots(suffix: "-escape")
+            try? await Task.sleep(for: .seconds(1.2))
+            let disarmed = !model.escapeArmed && model.isPresenting
+            await press(keyCode: 53, character: "\u{1b}")
+            await press(keyCode: 53, character: "\u{1b}")
+            let ended = !model.isPresenting
+            print("ESCAPE \(armed && disarmed && ended ? "OK" : "FAIL"): one Esc armed the button \(armed); it disarmed after a second \(disarmed); two in a row ended presenting \(ended)")
+            model.startPresenting()
+        }
         if CommandLine.arguments.contains("-titlebar"), let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
             // AppKit's own header: the deck's name as the title and a real proxy icon (NSThemeDocumentButton).
             func views(_ v: NSView?) -> [NSView] { (v?.subviews ?? []).flatMap { [$0] + views($0) } }

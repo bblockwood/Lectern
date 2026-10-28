@@ -634,7 +634,8 @@ struct StatusBar: View {
     /// display, "Rehearsal" without; clicking it ends presenting. Icons only when the bar is too narrow.
     @ViewBuilder private var presentingButtons: some View {
         let canSwap = model.displays.assignment.audience != nil
-        let presentTitle = model.isPresenting ? (canSwap ? "Live" : "Rehearsal") : "Present"
+        let armed = model.escapeArmed
+        let presentTitle = armed ? "Esc again to end" : model.isPresenting ? (canSwap ? "Live" : "Rehearsal") : "Present"
         let presentHelp = model.isPresenting
             ? (canSwap ? "Presenting on \(model.displays.assignment.audience?.name ?? "the external display"). Click to end (Esc Esc)."
                        : "Presenting in a rehearsal window, no second display. Click to end (Esc Esc).")
@@ -642,11 +643,12 @@ struct StatusBar: View {
         let swapHelp = canSwap ? "Swap which display shows the audience (⌘D)" : "Connect a second display as an extended display, not mirrored, to swap"
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
-                ModeButton(title: presentTitle, key: model.isPresenting ? "Esc Esc" : "⌥⌘P",
-                           symbol: model.isPresenting ? "stop.fill" : "play.fill", color: .green, isOn: model.isPresenting) {
+                ModeButton(title: presentTitle, key: armed ? "" : model.isPresenting ? "Esc Esc" : "⌥⌘P",
+                           symbol: model.isPresenting ? "stop.fill" : "play.fill", color: armed ? .orange : .green, isOn: model.isPresenting) {
                     if model.isPresenting { model.endPresenting() } else { _ = model.perform(.startPresenting) }
                 }
                 .help(presentHelp)
+                .animation(.easeInOut(duration: 0.15), value: armed)
                 ModeButton(title: "Swap", key: "⌘D", symbol: "arrow.left.arrow.right", color: .gray, isOn: false) {
                     _ = model.perform(.swapDisplays)
                 }
@@ -654,7 +656,7 @@ struct StatusBar: View {
                 .help(swapHelp)
             }
             HStack(spacing: 8) {
-                ModeButton(title: "", key: "", symbol: model.isPresenting ? "stop.fill" : "play.fill", color: .green, isOn: model.isPresenting) {
+                ModeButton(title: "", key: "", symbol: model.isPresenting ? "stop.fill" : "play.fill", color: armed ? .orange : .green, isOn: model.isPresenting) {
                     if model.isPresenting { model.endPresenting() } else { _ = model.perform(.startPresenting) }
                 }
                 .help(presentHelp)

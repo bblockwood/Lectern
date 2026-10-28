@@ -410,3 +410,4 @@ Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-t
 7. **B / W / F only while presenting**: keys and menu items are inert otherwise, the pills are hidden, and ending presenting returns the audience to live.
 8. **Notes editing removed** (⌘E, Edit / Done, the editor); the sidecar's existing user notes still load.
 9. **Overview is a presenting mode**: every key keeps its meaning (→, Space, digits, frames, back), the blue ring follows the current frame and the orange one the audience's when frozen; clicks jump; the cursor and its ↑/↓ row moves are gone. Self-test `-overview` presses → and Space with the overview open.
+- **First Esc while presenting** (branch `esc-inplace`) no longer raises a banner: the Present button turns orange and reads "Esc again to end" for a second.
