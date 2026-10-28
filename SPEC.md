@@ -244,7 +244,7 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 | Timer start-pause / reset | T / ⌥T |
 | Swap displays | ⌘D (⌥⌘D is the system's Dock toggle) |
 | Start presenting | ⌥⌘P, F5 |
-| End presenting | Esc twice within 1 s (a single Esc first clears typed digits, then turns Laser / Draw off, then closes the overview) |
+| End presenting | Esc twice within 1 s (a single Esc first clears typed digits, then turns Laser / Draw off, then closes the overview). After the first Esc the Present button turns orange and reads "Esc again to end" for a second; no banner. |
 
 ### 6.6 Live reload
 

@@ -62,6 +62,8 @@ final class AppModel {
     private(set) var searchFocusRequest = 0
     /// The keyboard-shortcut card: ⌘/ or ? toggles it; Esc, a click outside or a row click closes it.
     private(set) var shortcutOverlayVisible = false
+    /// One Esc was pressed while presenting; the Present button shows "Esc again to end" until this clears.
+    private(set) var escapeArmed = false
     /// Bumped to ask the status bar to open the countdown editor on the timer (menu "Custom…").
     private(set) var countdownEditorRequest = 0
     /// The notes pane shows the contents instead of notes. Chosen once when a deck opens (contents if the first
@@ -82,6 +84,7 @@ final class AppModel {
     @ObservationIgnored private var audienceWindow: AudienceWindowController?
     @ObservationIgnored private var power: PowerAssertion?
     @ObservationIgnored private var escapeArmedUntil: Date?
+    @ObservationIgnored private var escapeArmTask: Task<Void, Never>?
     @ObservationIgnored private var audienceDisplayLostBanner: Banner?
     @ObservationIgnored private var jumpBufferTimeout: Task<Void, Never>?
     @ObservationIgnored private var settingsWindow: SettingsWindowController?
@@ -289,24 +292,37 @@ final class AppModel {
         }
         if let presentation, presentation.pointerMode || presentation.drawMode {
             presentation.deactivateTools()
-            escapeArmedUntil = nil
+            disarmEscape()
             return true
         }
         if overviewVisible {
             setOverview(visible: false)
-            escapeArmedUntil = nil
+            disarmEscape()
             return true
         }
         guard isPresenting else { return false }
         let now = Date()
         if let armed = escapeArmedUntil, now <= armed {
-            escapeArmedUntil = nil
             endPresenting()
         } else {
+            // Shown in place on the Present button rather than as a banner (Ben: a banner is not Mac-like).
             escapeArmedUntil = now.addingTimeInterval(1)
-            show(Banner(kind: .info, text: "Press Esc again to end presenting."), autoDismissAfter: 1.2)
+            escapeArmed = true
+            escapeArmTask?.cancel()
+            escapeArmTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                self?.disarmEscape()
+            }
         }
         return true
+    }
+
+    private func disarmEscape() {
+        escapeArmedUntil = nil
+        escapeArmed = false
+        escapeArmTask?.cancel()
+        escapeArmTask = nil
     }
 
     /// Setting a countdown starts the timer at once if it is not already running (feedback round 3); a deck's
@@ -379,7 +395,7 @@ final class AppModel {
         audienceWindow?.hide()
         rehearsalAudienceWindowVisible = false
         power = nil
-        escapeArmedUntil = nil
+        disarmEscape()
         Latency.shared.primaryRole = .presenterCurrent
         presentation?.setPresenting(false, audienceDisplay: nil, presenterDisplay: displays.assignment.presenter?.id)
         if let banner = audienceDisplayLostBanner { dismiss(banner); audienceDisplayLostBanner = nil }
