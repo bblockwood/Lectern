@@ -231,6 +231,8 @@ final class SelfTest {
         let kept = presentation.state.ink.strokes.count
         _ = model.perform(.command(.clearInk))
         let cleared = presentation.state.ink.strokes.count
+        let toolsOff = !presentation.drawMode && !presentation.pointerMode
+        _ = model.perform(.toggleDraw)   // C turned Draw off; back on to draw again
         view.mouseDown(with: event(.leftMouseDown, (0.3, 0.3)))
         view.mouseDragged(with: event(.leftMouseDragged, (0.5, 0.3)))
         view.mouseUp(with: event(.leftMouseUp, (0.5, 0.3)))
@@ -238,7 +240,7 @@ final class SelfTest {
         _ = model.perform(.command(.next))
         let afterAdvance = presentation.state.ink.strokes.count
         _ = model.perform(.command(.previous))
-        print("INK persistence \(kept == 1 && cleared == 0 && drawnAgain == 1 && afterAdvance == 0 ? "OK" : "FAIL"): strokes after 3.5 s \(kept) (expected 1), after C \(cleared), drawn again \(drawnAgain), after the next build \(afterAdvance)")
+        print("INK persistence \(kept == 1 && cleared == 0 && toolsOff && drawnAgain == 1 && afterAdvance == 0 ? "OK" : "FAIL"): strokes after 3.5 s \(kept) (expected 1), after C \(cleared) with tools off \(toolsOff), drawn again \(drawnAgain), after the next build \(afterAdvance)")
         _ = model.perform(.toggleDraw)
     }
 

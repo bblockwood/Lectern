@@ -186,6 +186,7 @@ final class AppModel {
             if overviewVisible, let move = overviewMove(for: command) {
                 moveOverviewSelection(by: move)
             } else {
+                if command == .clearInk { presentation.deactivateTools() }
                 presentation.apply(command)
             }
         case .verticalArrow(let up):

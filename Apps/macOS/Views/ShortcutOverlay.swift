@@ -42,7 +42,7 @@ enum ShortcutReference {
             Shortcut("F", "Freeze the audience view") { _ = $0.perform(.toggleFreeze) },
             Shortcut("⌥⌘P", "Start presenting") { _ = $0.perform(.startPresenting) },
             Shortcut("Esc Esc", "End presenting") { $0.endPresenting() },
-            Shortcut("⌥⌘D", "Swap displays") { _ = $0.perform(.swapDisplays) },
+            Shortcut("⌘D", "Swap displays") { _ = $0.perform(.swapDisplays) },
         ]),
          ShortcutGroup(title: "App", shortcuts: [
             Shortcut("⌃⌘F", "Full screen") { $0.toggleFullScreen() },
@@ -53,7 +53,7 @@ enum ShortcutReference {
         [ShortcutGroup(title: "Tools", shortcuts: [
             Shortcut("L", "Laser pointer") { _ = $0.perform(.togglePointer) },
             Shortcut("D", "Draw on the slide") { _ = $0.perform(.toggleDraw) },
-            Shortcut("C", "Clear the drawing") { _ = $0.perform(.command(.clearInk)) },
+            Shortcut("C", "Clear drawing, tools off") { _ = $0.perform(.command(.clearInk)) },
             Shortcut("T", "Start / pause the timer") { _ = $0.perform(.toggleTimer) },
             Shortcut("⌥T", "Reset the timer") { _ = $0.perform(.resetTimer) },
             Shortcut("⌘E", "Edit notes") { _ = $0.perform(.editNotes) },

@@ -117,7 +117,7 @@ final class DisplayManager {
         assignment = DisplayAssigner.assign(displays: displays, remembered: remembered)
     }
 
-    /// Swap presenter and audience (⌥⌘D) and remember the choice for these displays.
+    /// Swap presenter and audience (⌘D) and remember the choice for these displays.
     func swap() {
         guard let presenter = assignment.presenter, let audience = assignment.audience else { return }
         remembered[presenter.id] = .audience

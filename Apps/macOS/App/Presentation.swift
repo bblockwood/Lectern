@@ -217,6 +217,15 @@ final class Presentation {
         updateTracking()
     }
 
+    /// C: Laser and Draw both off (feedback round 4); the caller clears the ink.
+    func deactivateTools() {
+        guard pointerMode || drawMode else { return }
+        pointerMode = false
+        drawMode = false
+        apply(.pointerHide)
+        updateTracking()
+    }
+
     private func updateTracking() {
         for surface in [audienceSurface, currentSurface] {
             surface.view.pointerTrackingEnabled = pointerMode

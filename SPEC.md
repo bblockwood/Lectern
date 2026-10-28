@@ -206,12 +206,12 @@ Read all of these and merge them per page. Earlier sources take priority.
 - **Status bar:**
   - Frame label and total, build x/y.
   - The timer: elapsed time, or, once a countdown is set (pdfpc duration, sidecar, or by clicking the timer), the time left in its place: green while positive, red and counting up once exhausted (feedback round 2). The wall clock beside it.
-  - Audience-mode indicator: LIVE, or FROZEN/BLACK/WHITE in amber or red, with a Present / End button and a Swap displays button beside it (Ben, 2026-10-27: presenting on a second screen must be discoverable without the menu).
+  - A Present button (⌥⌘P) whose lit state is the presenting indicator: "Live" with an audience display, "Rehearsal" without; clicking it ends presenting. A Swap displays button (⌘D) beside it. FROZEN / BLACK / WHITE appear as an orange or red pill only in those modes (Ben, 2026-10-27).
 - Panes are resizable and the layout persists. Dark UI by default.
 
 ### 6.3 Overview and jumping
 
-- The overview opens with Tab. It shows a grid of frames with labels, an outline sidebar, and a search field.
+- The overview opens with Tab. On the Mac it keeps the current slide exactly where the presenter layout puts it and replaces the next-slide and notes column with a search field and a two-column grid of frames; the outline appears as titled horizontal dividers between the frames of each section (Ben, 2026-10-27). The cursor is blue; the frame the audience sees is ringed orange, the FROZEN colour, since that is when it differs from the presenter's.
 - On the Mac (Ben, 2026-10-27): a click on a frame, an outline entry or a search hit jumps there at once and pushes history; the audience follows immediately and the overview stays open. Arrow keys move a cursor without changing the slide; Enter jumps to the cursor; Tab or Esc closes the overview. Under each frame: the build count beside the label when there is more than one, an appendix mark, and a notes icon at the right when the frame has notes. The private-browse commands (`beginBrowse`, `browseTo`, `commitBrowse`, `cancelBrowse`) stay in the protocol and reducer for a presenter-only preview on other platforms or remotes, but the Mac overview no longer uses them, so the "PREVIEW: audience sees Frame N" banner does not appear there.
 - Jump by number: typing digits then Return, from anywhere, goes to the frame with that label and pushes history. Return with no digits typed means `next`.
 
@@ -237,12 +237,12 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 | Black / white screen | B or `.` / W |
 | Freeze audience | F |
 | Laser pointer | L |
-| Draw / clear drawing | D / C |
+| Draw / clear drawing | D / C (C also turns Laser and Draw off) |
 | Next build (also) | click on the current or next slide |
 | Full screen | ⌃⌘F |
 | Shortcut card | hold ⌘ alone for ~0.5 s; it stays up; a tap of ⌘, Esc or a click outside closes it; its rows are clickable |
 | Timer start-pause / reset | T / ⌥T |
-| Swap displays | ⌥⌘D |
+| Swap displays | ⌘D (⌥⌘D is the system's Dock toggle) |
 | Start presenting | ⌥⌘P, F5 |
 | End presenting | Esc twice within 1 s (single Esc cancels browse) |
 
