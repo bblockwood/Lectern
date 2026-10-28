@@ -206,7 +206,7 @@ Read all of these and merge them per page. Earlier sources take priority.
 - **Status bar:**
   - Frame label and total, build x/y.
   - The timer: elapsed time, or, once a countdown is set (pdfpc duration, sidecar, or by clicking the timer), the time left in its place: green while positive, red and counting up once exhausted (feedback round 2). The wall clock beside it.
-  - Audience-mode indicator: LIVE, or FROZEN/BLACK/WHITE in amber or red.
+  - Audience-mode indicator: LIVE, or FROZEN/BLACK/WHITE in amber or red, with a Present / End button and a Swap displays button beside it (Ben, 2026-10-27: presenting on a second screen must be discoverable without the menu).
 - Panes are resizable and the layout persists. Dark UI by default.
 
 ### 6.3 Overview and jumping
