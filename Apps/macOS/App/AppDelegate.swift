@@ -8,13 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var welcomeWindow: WelcomeWindowController!
     private var presenterWindow: PresenterWindowController!
     private var keyMonitor: Any?
-    private var flagsMonitor: Any?
-    private var mouseMonitor: Any?
-    /// Counting down while ⌘ is held alone; shows the shortcut card when it fires (feedback round 3).
-    private var commandHoldTask: Task<Void, Never>?
-    /// ⌘ went down alone while the card was up; releasing it with nothing in between closes the card.
-    private var commandReleaseCloses = false
-    static let shortcutHoldDelay: Duration = .milliseconds(500)
+    private var deactivationObserver: NSObjectProtocol?
     private var selfTest: SelfTest?
     private var recentsMenu: NSMenu?
 
@@ -34,20 +28,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         welcomeWindow.show()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
-            self.cancelCommandHold()   // ⌘ plus a key is a shortcut, not a hold
             if self.model.shortcutOverlayVisible, self.presenterIsKey, KeyMap.isEscape(event) {
                 self.model.setShortcutOverlay(visible: false)
                 return nil
             }
             return self.handle(keyEvent: event) ? nil : event
         }
-        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
-            self?.modifiersChanged(event)
-            return event
-        }
-        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
-            self?.cancelCommandHold()   // ⌘-click is not a hold either
-            return event
+        // Switching away (⌘-Tab) closes the shortcut card, as a transient panel should.
+        deactivationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.model.setShortcutOverlay(visible: false) }
         }
         NSApp.activate()
 
@@ -101,46 +90,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return model.perform(action)
     }
 
-    /// Holding ⌘ on its own for half a second shows the shortcut card, which then stays up (feedback rounds 2
-    /// and 3). While it is up, pressing and releasing ⌘ alone closes it. A key, a click or another modifier in
-    /// between cancels either, so ⌘-shortcuts and ⌘-clicks never touch the card.
-    private func modifiersChanged(_ event: NSEvent) {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
-        if flags == [.command] {
-            guard presenterIsKey else { return }
-            if model.shortcutOverlayVisible {
-                commandReleaseCloses = true
-            } else if model.presentation != nil, AppSettings.showsShortcutOverlay {
-                commandHoldTask?.cancel()
-                commandHoldTask = Task { [weak self] in
-                    try? await Task.sleep(for: AppDelegate.shortcutHoldDelay)
-                    guard !Task.isCancelled, let self else { return }
-                    self.commandHoldTask = nil
-                    self.model.setShortcutOverlay(visible: true)
-                }
-            }
-        } else if flags.isEmpty {
-            commandHoldTask?.cancel()
-            commandHoldTask = nil
-            if commandReleaseCloses {
-                commandReleaseCloses = false
-                model.setShortcutOverlay(visible: false)
-            }
-        } else {
-            cancelCommandHold()
-        }
-    }
-
-    private func cancelCommandHold() {
-        commandHoldTask?.cancel()
-        commandHoldTask = nil
-        commandReleaseCloses = false
-    }
-
     // MARK: - Menu actions
 
     @objc func openDocument(_ sender: Any?) { model.openPanel() }
     @objc func showSettings(_ sender: Any?) { model.showSettings() }
+    @objc func toggleShortcutCard(_ sender: Any?) { _ = model.perform(.toggleShortcutCard) }
     /// ⌘W closes whichever window is key (Settings, the chooser), else the deck.
     @objc func closeDocument(_ sender: Any?) {
         if let keyWindow = NSApp.keyWindow, !(keyWindow is PresenterWindow) { keyWindow.performClose(sender); return }
@@ -221,6 +175,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return model.presentation != nil
         case #selector(editNotes(_:)):
             item.state = model.notesEditing ? .on : .off
+            return model.presentation != nil
+        case #selector(toggleShortcutCard(_:)):
+            item.state = model.shortcutOverlayVisible ? .on : .off
             return model.presentation != nil
         case #selector(closeDocument(_:)):
             let otherWindowIsKey = NSApp.keyWindow.map { !($0 is PresenterWindow) } ?? false

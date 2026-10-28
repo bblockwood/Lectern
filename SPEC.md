@@ -146,7 +146,7 @@ The remaining-frames count and the pace indicator use it. Beyond this page, the 
 
 ### 4.4 Outline and search
 
-- Show the PDF outline as a collapsible table of contents in the overview.
+- Show the PDF outline as a table of contents: on the Mac it lives in the notes pane (below), not in the overview.
 - The notes pane doubles as the table of contents (feedback rounds 2 and 3): a Contents heading shows the outline with the current part highlighted and each entry's frame; clicking an entry jumps there. Which of the two shows is decided once when a deck opens (contents if the first slide has no notes) and then only by the presenter; it never flips from slide to slide.
 - Full-text search uses the PDF text layer. Results are grouped by frame. On the Mac, clicking a result or pressing Enter on it jumps there at once and the overview stays open (private browsing was dropped; Ben found the frozen audience awkward).
 
@@ -211,7 +211,7 @@ Read all of these and merge them per page. Earlier sources take priority.
 
 ### 6.3 Overview and jumping
 
-- The overview opens with Tab. On the Mac it keeps the current slide exactly where the presenter layout puts it and replaces the next-slide and notes column with a search field and a two-column grid of frames; the outline appears as titled horizontal dividers between the frames of each section (Ben, 2026-10-27). The cursor is blue; the frame the audience sees is ringed orange, the FROZEN colour, since that is when it differs from the presenter's.
+- The overview opens with Tab. On the Mac it keeps the current slide exactly where the presenter layout puts it and replaces the next-slide and notes column with a search field and a two-column grid of frames (Ben, 2026-10-27; section dividers were tried and dropped, since decks with one frame per section left half the grid empty). The cursor is blue; the frame the audience sees is ringed orange, the FROZEN colour, since that is when it differs from the presenter's.
 - On the Mac (Ben, 2026-10-27): a click on a frame, an outline entry or a search hit jumps there at once and pushes history; the audience follows immediately and the overview stays open. Arrow keys move a cursor without changing the slide; Enter jumps to the cursor; Tab or Esc closes the overview. Under each frame: the build count beside the label when there is more than one, an appendix mark, and a notes icon at the right when the frame has notes. The private-browse commands (`beginBrowse`, `browseTo`, `commitBrowse`, `cancelBrowse`) stay in the protocol and reducer for a presenter-only preview on other platforms or remotes, but the Mac overview no longer uses them, so the "PREVIEW: audience sees Frame N" banner does not appear there.
 - Jump by number: typing digits then Return, from anywhere, goes to the frame with that label and pushes history. Return with no digits typed means `next`.
 
@@ -240,7 +240,7 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 | Draw / clear drawing | D / C (C also turns Laser and Draw off) |
 | Next build (also) | click on the current or next slide |
 | Full screen | ⌃⌘F |
-| Shortcut card | hold ⌘ alone for ~0.5 s; it stays up; a tap of ⌘, Esc or a click outside closes it; its rows are clickable |
+| Keyboard-shortcut card | ⌘/ or ? toggles it (Help ▸ Keyboard Shortcuts); Esc, a click outside or going to the background closes it; its rows are clickable. (A hold-⌘ trigger was tried and dropped: apps never see ⌘-Tab, so the card popped up over the app switcher.) |
 | Timer start-pause / reset | T / ⌥T |
 | Swap displays | ⌘D (⌥⌘D is the system's Dock toggle) |
 | Start presenting | ⌥⌘P, F5 |

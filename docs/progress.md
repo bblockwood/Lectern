@@ -393,3 +393,8 @@ Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-t
 4. **Overview cursor**: thick blue stroke, no glow.
 5. **Audience ring** in the overview is orange and marks the frame the audience sees, so when frozen it stays on the frozen page while the cursor moves.
 6. **Overview layout**: the current slide keeps its size and position (same split fraction as the presenter layout); the right column becomes search plus a two-column grid, with the outline as titled dividers between the frames of each section (pinned while scrolling, subsections indented). ↑/↓ move the cursor by two.
+
+## Feedback round 5 (2026-10-27, branch `feedback-5`)
+
+1. **Overview without section dividers**: a plain two-column grid again; the outline remains in the notes pane's Contents list.
+2. **Shortcut card on ⌘/ or ?** (Help ▸ Keyboard Shortcuts), closed by Esc, a click outside, a row click, or the app going to the background. The hold-⌘ trigger went: ⌘-Tab is never delivered to apps and the app stays active while the switcher is up, so a hold cannot be told from a system chord (see decisions). The Settings toggle and the modifier monitors are gone; the welcome hint says "? for every shortcut". Self-test `-shortcuts` drives ?, ⌘/, Esc, a click outside and a row click.

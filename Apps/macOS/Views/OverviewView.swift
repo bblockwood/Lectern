@@ -2,9 +2,9 @@ import PresenterCore
 import SwiftUI
 
 /// Overview (SPEC §6.3): the current slide stays exactly where the presenter layout puts it; the next-slide and
-/// notes column is replaced by search and a two-column grid of frames, with the outline as titled dividers
-/// between the frames of each section (feedback round 4). A click on a frame or a search hit jumps there at
-/// once; arrows move a cursor without changing the slide and Return jumps to it; Tab or Esc closes.
+/// notes column is replaced by search and a two-column grid of frames (feedback rounds 4 and 5). A click on a
+/// frame or a search hit jumps there at once; arrows move a cursor without changing the slide and Return jumps
+/// to it; Tab or Esc closes.
 struct OverviewLayout: View {
     let model: AppModel
     let presentation: Presentation
@@ -141,33 +141,10 @@ struct SearchResults: View {
     }
 }
 
-/// Consecutive frames that fall under the same outline entry; `title` is nil before the first entry.
-struct FrameSection {
-    var entryID: Int?
-    var title: String?
-    var depth: Int
-    var frames: [Frame]
-
-    /// Groups the deck's frames by the outline entry each starts under (SPEC §4.4's current-part rule).
-    static func sections(frames: FrameIndex, outline: Outline) -> [FrameSection] {
-        let depths = Dictionary(uniqueKeysWithValues: outline.flattened.map { ($0.node.id, $0.depth) })
-        var sections: [FrameSection] = []
-        for frame in frames.frames {
-            let entry = outline.currentEntry(forPage: frame.firstPage)
-            if !sections.isEmpty, sections[sections.count - 1].entryID == entry?.id {
-                sections[sections.count - 1].frames.append(frame)
-            } else {
-                sections.append(FrameSection(entryID: entry?.id, title: entry?.title, depth: entry.map { depths[$0.id] ?? 0 } ?? 0, frames: [frame]))
-            }
-        }
-        return sections
-    }
-}
-
-/// Two columns of frames showing the last page of each (SPEC §4.1), labelled, under titled dividers for the
-/// outline's sections. The cursor is blue; what the audience sees is ringed orange (the FROZEN colour, since
-/// that is when the two differ). A click jumps to the frame. Under each: the build count beside the label when
-/// there is more than one, an appendix mark, and a notes icon at the right when the frame has notes.
+/// Two columns of frames showing the last page of each (SPEC §4.1), labelled. The cursor is blue; what the
+/// audience sees is ringed orange (the FROZEN colour, since that is when the two differ). A click jumps to the
+/// frame. Under each: the build count beside the label when there is more than one, an appendix mark, and a
+/// notes icon at the right when the frame has notes.
 struct FrameGrid: View {
     let model: AppModel
     let presentation: Presentation
@@ -176,53 +153,26 @@ struct FrameGrid: View {
     private static let columns = 2
 
     var body: some View {
-        let sections = FrameSection.sections(frames: presentation.document.frames, outline: presentation.document.outline)
         let audienceFrame = presentation.state.audiencePage.map { presentation.document.frames.frame(containing: $0).index }
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: FrameGrid.columns),
-                          spacing: 12, pinnedViews: [.sectionHeaders]) {
-                    ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                        Section {
-                            ForEach(section.frames, id: \.index) { frame in
-                                FrameCell(frame: frame, aspect: presentation.document.pages[frame.lastPage].aspectRatio,
-                                          image: presentation.thumbnails.image(forFrame: frame.index),
-                                          isSelected: frame.index == selectedFrame,
-                                          isAudience: frame.index == audienceFrame,
-                                          isAppendix: presentation.document.isAppendix(page: frame.firstPage),
-                                          hasNotes: frame.pages.contains { presentation.notes.table.note(for: $0, frames: presentation.document.frames) != nil })
-                                    .onTapGesture { model.jump(to: frame.firstPage) }
-                                    .id(frame.index)
-                            }
-                        } header: {
-                            if let title = section.title { SectionDivider(title: title, depth: section.depth) }
-                        }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: FrameGrid.columns), spacing: 12) {
+                    ForEach(presentation.document.frames.frames, id: \.index) { frame in
+                        FrameCell(frame: frame, aspect: presentation.document.pages[frame.lastPage].aspectRatio,
+                                  image: presentation.thumbnails.image(forFrame: frame.index),
+                                  isSelected: frame.index == selectedFrame,
+                                  isAudience: frame.index == audienceFrame,
+                                  isAppendix: presentation.document.isAppendix(page: frame.firstPage),
+                                  hasNotes: frame.pages.contains { presentation.notes.table.note(for: $0, frames: presentation.document.frames) != nil })
+                            .onTapGesture { model.jump(to: frame.firstPage) }
+                            .id(frame.index)
                     }
                 }
-                .padding(.horizontal, 4).padding(.bottom, 8)
+                .padding(.horizontal, 4).padding(.vertical, 8)
             }
             .onAppear { model.overviewColumns = FrameGrid.columns; proxy.scrollTo(selectedFrame, anchor: .center) }
             .onChange(of: selectedFrame) { _, frame in withAnimation(.easeInOut(duration: 0.1)) { proxy.scrollTo(frame) } }
         }
-    }
-}
-
-/// A titled horizontal rule between the frames of one outline section; subsections are indented.
-struct SectionDivider: View {
-    let title: String
-    let depth: Int
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(title.isEmpty ? "(untitled)" : title)
-                .font(.system(size: Theme.small, weight: .semibold))
-                .foregroundStyle(depth == 0 ? Color.primary : Color.secondary)
-                .lineLimit(1)
-                .padding(.leading, CGFloat(depth) * 12)
-            Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1)
-        }
-        .padding(.vertical, 6)
-        .background(Color.black)   // pinned headers scroll over the thumbnails
     }
 }
 

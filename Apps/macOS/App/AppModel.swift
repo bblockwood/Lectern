@@ -32,6 +32,8 @@ enum AppAction: Equatable {
     case notesFontLarger
     case notesFontSmaller
     case editNotes
+    /// ⌘/ or ?: the keyboard-shortcut card on / off.
+    case toggleShortcutCard
 }
 
 struct Banner: Identifiable, Equatable {
@@ -64,7 +66,7 @@ final class AppModel {
     var overviewColumns = 4
     /// Inline notes editor open (SPEC §5.2).
     private(set) var notesEditing = false
-    /// The shortcut card: toggled by a tap of ⌘ (feedback rounds 1 and 2).
+    /// The keyboard-shortcut card: ⌘/ or ? toggles it; Esc, a click outside or a row click closes it.
     private(set) var shortcutOverlayVisible = false
     /// Bumped to ask the status bar to open the countdown editor on the timer (menu "Custom…").
     private(set) var countdownEditorRequest = 0
@@ -237,6 +239,8 @@ final class AppModel {
             notesFontSize -= 2
         case .editNotes:
             notesEditing.toggle()
+        case .toggleShortcutCard:
+            setShortcutOverlay(visible: !shortcutOverlayVisible)
         case .toggleAudience(let mode):
             presentation.apply(.setAudienceMode(presentation.state.audienceMode == mode ? .live : mode))
         case .toggleFreeze:

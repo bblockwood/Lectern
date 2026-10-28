@@ -4,7 +4,6 @@ import SwiftUI
 /// Settings (⌘,). Each control edits a UserDefaults key from `AppSettings`; the app reads the keys when it needs them.
 struct SettingsView: View {
     @AppStorage(AppSettings.previousLandsOnFrameStartKey) private var previousLandsOnFrameStart = false
-    @AppStorage(AppSettings.shortcutOverlayKey) private var shortcutOverlay = true
     @AppStorage(AppSettings.notesFontSizeKey) private var notesFontSize = Theme.notesDefault
     @AppStorage(AppSettings.opensURILinksKey) private var opensURILinks = false
 
@@ -20,7 +19,6 @@ struct SettingsView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Section("Presenter") {
-                Toggle("Hold ⌘ for half a second to show the keyboard shortcuts", isOn: $shortcutOverlay)
                 Stepper("Notes size: \(Int(notesFontSize)) pt  (⌘+ / ⌘− while presenting)", value: $notesFontSize, in: 10...48, step: 2)
             }
             Section("Links") {

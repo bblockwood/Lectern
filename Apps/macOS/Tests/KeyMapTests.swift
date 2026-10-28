@@ -47,6 +47,8 @@ private func key(_ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.M
         #expect(KeyMap.action(for: key("l")) == .togglePointer)
         #expect(KeyMap.action(for: key("d")) == .toggleDraw)
         #expect(KeyMap.action(for: key("c")) == .command(.clearInk))   // C for Clear (feedback round 2; was E)
+        #expect(KeyMap.action(for: key("?", modifiers: .shift)) == .toggleShortcutCard)
+        #expect(KeyMap.action(for: key("/", modifiers: .command)) == .toggleShortcutCard)
     }
 
     @MainActor @Test func unmappedKeysPassThrough() {

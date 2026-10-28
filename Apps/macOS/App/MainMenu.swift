@@ -81,6 +81,11 @@ enum MainMenu {
         main.addItem(submenu: window, title: "Window")
         NSApp.windowsMenu = window
 
+        let help = NSMenu(title: "Help")
+        help.addItem(item("Keyboard Shortcuts", #selector(AppDelegate.toggleShortcutCard(_:)), "/", target))
+        main.addItem(submenu: help, title: "Help")
+        NSApp.helpMenu = help
+
         return (main, recents)
     }
 
