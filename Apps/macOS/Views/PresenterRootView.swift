@@ -607,19 +607,19 @@ struct StatusBar: View {
         }
     }
 
+    /// Only the audience modes that hide the live slide get a pill; presenting itself shows on the Present
+    /// button (feedback round 4).
+    @ViewBuilder
     private func audienceIndicator(presentation: Presentation) -> some View {
-        let (text, color): (String, Color) = {
+        let mode: (String, Color)? = {
             switch presentation.state.audienceMode {
-            case .live: return model.isPresenting ? ("LIVE", .green) : ("NOT PRESENTING", .gray)
+            case .live: return nil
             case .frozen: return ("FROZEN", .orange)
             case .black: return ("BLACK", .red)
             case .white: return ("WHITE", .red)
             }
         }()
-        return HStack(spacing: 12) {
-            if model.isPresenting && model.displays.assignment.audience == nil {
-                Text("REHEARSAL").font(.system(size: Theme.small, weight: .bold)).foregroundStyle(.secondary)
-            }
+        if let (text, color) = mode {
             Text(text)
                 .font(.system(size: Theme.body, weight: .bold, design: .rounded))
                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -628,22 +628,25 @@ struct StatusBar: View {
         }
     }
 
-    /// Present / End and Swap displays, so presenting on a second screen is discoverable without the menu
-    /// (Ben, 2026-10-27). Icons only when the bar is too narrow for the words.
+    /// Present / Live / Rehearsal and Swap displays, so presenting on a second screen is discoverable without
+    /// the menu (Ben, 2026-10-27). The button's lit state is the presenting indicator: "Live" with an audience
+    /// display, "Rehearsal" without; clicking it ends presenting. Icons only when the bar is too narrow.
     @ViewBuilder private var presentingButtons: some View {
         let canSwap = model.displays.assignment.audience != nil
+        let presentTitle = model.isPresenting ? (canSwap ? "Live" : "Rehearsal") : "Present"
         let presentHelp = model.isPresenting
-            ? "End presenting (Esc Esc)"
+            ? (canSwap ? "Presenting on \(model.displays.assignment.audience?.name ?? "the external display"). Click to end (Esc Esc)."
+                       : "Presenting in a rehearsal window, no second display. Click to end (Esc Esc).")
             : "Present on the largest external display; with one display, in a rehearsal window (⌥⌘P). Set a TV or projector to \"Use As Separate Display\", not mirroring."
-        let swapHelp = canSwap ? "Swap which display shows the audience (⌥⌘D)" : "Connect a second display as an extended display, not mirrored, to swap"
+        let swapHelp = canSwap ? "Swap which display shows the audience (⌘D)" : "Connect a second display as an extended display, not mirrored, to swap"
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
-                ModeButton(title: model.isPresenting ? "End" : "Present", key: model.isPresenting ? "Esc Esc" : "⌥⌘P",
+                ModeButton(title: presentTitle, key: model.isPresenting ? "Esc Esc" : "⌥⌘P",
                            symbol: model.isPresenting ? "stop.fill" : "play.fill", color: .green, isOn: model.isPresenting) {
                     if model.isPresenting { model.endPresenting() } else { _ = model.perform(.startPresenting) }
                 }
                 .help(presentHelp)
-                ModeButton(title: "Swap", key: "⌥⌘D", symbol: "arrow.left.arrow.right", color: .gray, isOn: false) {
+                ModeButton(title: "Swap", key: "⌘D", symbol: "arrow.left.arrow.right", color: .gray, isOn: false) {
                     _ = model.perform(.swapDisplays)
                 }
                 .disabled(!canSwap).opacity(canSwap ? 1 : 0.4)

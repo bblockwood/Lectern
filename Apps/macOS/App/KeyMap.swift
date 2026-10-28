@@ -36,13 +36,13 @@ enum KeyMap {
         if key == "\r" || key == "\u{3}" { return .returnKey }
         if command && option {
             switch key {
-            case "d": return .swapDisplays
             case "p": return .startPresenting
             default: return nil
             }
         }
         if command {
             switch key {
+            case "d": return .swapDisplays   // ⌘D; ⌥⌘D is the system's Dock toggle (feedback round 4)
             case "[": return .command(.back)
             case "f": return .focusSearch
             case "=", "+": return .notesFontLarger

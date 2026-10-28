@@ -1,18 +1,23 @@
 import PresenterCore
 import SwiftUI
 
-/// Overview (SPEC §6.3): current slide on the left; outline, search and the frame grid on the right.
-/// A click on a frame, an outline entry or a search hit jumps there at once; arrows move a cursor without
-/// changing the slide and Return jumps to it. The overview stays open until Tab or Esc.
+/// Overview (SPEC §6.3): the current slide stays exactly where the presenter layout puts it; the next-slide and
+/// notes column is replaced by search and a two-column grid of frames, with the outline as titled dividers
+/// between the frames of each section (feedback round 4). A click on a frame or a search hit jumps there at
+/// once; arrows move a cursor without changing the slide and Return jumps to it; Tab or Esc closes.
 struct OverviewLayout: View {
     let model: AppModel
     let presentation: Presentation
+    @AppStorage("layout.horizontalFraction") private var horizontalFraction = 0.68
 
     var body: some View {
         GeometryReader { geo in
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 0) {
                 CurrentSlidePane(model: model, presentation: presentation)
-                    .frame(width: max(240, geo.size.width * 0.36))
+                    .frame(width: max(200, geo.size.width * horizontalFraction))
+                SplitHandle(axis: .horizontal) { delta in
+                    horizontalFraction = min(0.85, max(0.3, horizontalFraction + delta / geo.size.width))
+                }
                 OverviewPanel(model: model, presentation: presentation)
             }
         }
@@ -32,40 +37,32 @@ struct OverviewPanel: View {
     private var selectedFrame: Int { model.overviewSelectedFrame ?? presentation.currentFrame.index }
 
     var body: some View {
-        HStack(spacing: 8) {
-            if !presentation.document.outline.isEmpty {
-                OutlineSidebar(outline: presentation.document.outline, frames: presentation.document.frames,
-                               currentPage: presentation.state.presenterPage) { page in
-                    model.jump(to: page)
-                }
-                .frame(width: 220)
-            }
-            VStack(spacing: 8) {
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search text (⌘F)", text: $query)
-                        .textFieldStyle(.plain)
-                        .focused($searchFocused)
-                        .onSubmit { commitFromSearch() }
-                        .onKeyPress(.downArrow) { moveHit(1); return .handled }
-                        .onKeyPress(.upArrow) { moveHit(-1); return .handled }
-                        .onKeyPress(.escape) { searchFocused = false; return .handled }
-                    if !query.isEmpty {
-                        Text(hits.isEmpty ? "no matches" : "\(hits.count) matches").foregroundStyle(.secondary).font(.system(size: Theme.small))
-                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(8)
-                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        VStack(alignment: .leading, spacing: Theme.paneSpacing) {
+            PaneTitle("Overview")
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search text (⌘F)", text: $query)
+                    .textFieldStyle(.plain)
+                    .focused($searchFocused)
+                    .onSubmit { commitFromSearch() }
+                    .onKeyPress(.downArrow) { moveHit(1); return .handled }
+                    .onKeyPress(.upArrow) { moveHit(-1); return .handled }
+                    .onKeyPress(.escape) { searchFocused = false; return .handled }
                 if !query.isEmpty {
-                    SearchResults(hits: hits, selected: selectedHit, frames: presentation.document.frames) { index in
-                        selectedHit = index
-                        model.jump(to: hits[index].pageIndex)
-                    }
-                    .frame(maxHeight: 220)
+                    Text(hits.isEmpty ? "no matches" : "\(hits.count) matches").foregroundStyle(.secondary).font(.system(size: Theme.small))
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary)
                 }
-                FrameGrid(model: model, presentation: presentation, selectedFrame: selectedFrame)
             }
+            .padding(8)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            if !query.isEmpty {
+                SearchResults(hits: hits, selected: selectedHit, frames: presentation.document.frames) { index in
+                    selectedHit = index
+                    model.jump(to: hits[index].pageIndex)
+                }
+                .frame(maxHeight: 220)
+            }
+            FrameGrid(model: model, presentation: presentation, selectedFrame: selectedFrame)
         }
         .task(id: query) {
             let text = query
@@ -96,6 +93,7 @@ struct OverviewPanel: View {
     }
 }
 
+/// The outline as a list with the current part highlighted and kept in view (notes pane, feedback round 2).
 struct OutlineSidebar: View {
     let outline: Outline
     let frames: FrameIndex
@@ -143,41 +141,88 @@ struct SearchResults: View {
     }
 }
 
-/// Grid of frames showing the last page of each (SPEC §4.1), labelled; the cursor is blue, the current frame green.
-/// A click jumps to the frame. Under each: the build count beside the label when there is more than one, an
-/// appendix mark, and a notes icon at the right when the frame has notes.
+/// Consecutive frames that fall under the same outline entry; `title` is nil before the first entry.
+struct FrameSection {
+    var entryID: Int?
+    var title: String?
+    var depth: Int
+    var frames: [Frame]
+
+    /// Groups the deck's frames by the outline entry each starts under (SPEC §4.4's current-part rule).
+    static func sections(frames: FrameIndex, outline: Outline) -> [FrameSection] {
+        let depths = Dictionary(uniqueKeysWithValues: outline.flattened.map { ($0.node.id, $0.depth) })
+        var sections: [FrameSection] = []
+        for frame in frames.frames {
+            let entry = outline.currentEntry(forPage: frame.firstPage)
+            if !sections.isEmpty, sections[sections.count - 1].entryID == entry?.id {
+                sections[sections.count - 1].frames.append(frame)
+            } else {
+                sections.append(FrameSection(entryID: entry?.id, title: entry?.title, depth: entry.map { depths[$0.id] ?? 0 } ?? 0, frames: [frame]))
+            }
+        }
+        return sections
+    }
+}
+
+/// Two columns of frames showing the last page of each (SPEC §4.1), labelled, under titled dividers for the
+/// outline's sections. The cursor is blue; what the audience sees is ringed orange (the FROZEN colour, since
+/// that is when the two differ). A click jumps to the frame. Under each: the build count beside the label when
+/// there is more than one, an appendix mark, and a notes icon at the right when the frame has notes.
 struct FrameGrid: View {
     let model: AppModel
     let presentation: Presentation
     let selectedFrame: Int
 
-    private let cellWidth: CGFloat = 200
+    private static let columns = 2
 
     var body: some View {
-        GeometryReader { geo in
-            let columns = max(1, Int(geo.size.width / (cellWidth + 12)))
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellWidth), spacing: 12), count: columns), spacing: 12) {
-                        ForEach(presentation.document.frames.frames, id: \.index) { frame in
-                            FrameCell(frame: frame, aspect: presentation.document.pages[frame.lastPage].aspectRatio,
-                                      image: presentation.thumbnails.image(forFrame: frame.index),
-                                      isSelected: frame.index == selectedFrame,
-                                      isCommitted: frame.index == presentation.committedFrame.index,
-                                      isAppendix: presentation.document.isAppendix(page: frame.firstPage),
-                                      hasNotes: frame.pages.contains { presentation.notes.table.note(for: $0, frames: presentation.document.frames) != nil })
-                                .frame(width: cellWidth)
-                                .onTapGesture { model.jump(to: frame.firstPage) }
-                                .id(frame.index)
+        let sections = FrameSection.sections(frames: presentation.document.frames, outline: presentation.document.outline)
+        let audienceFrame = presentation.state.audiencePage.map { presentation.document.frames.frame(containing: $0).index }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: FrameGrid.columns),
+                          spacing: 12, pinnedViews: [.sectionHeaders]) {
+                    ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                        Section {
+                            ForEach(section.frames, id: \.index) { frame in
+                                FrameCell(frame: frame, aspect: presentation.document.pages[frame.lastPage].aspectRatio,
+                                          image: presentation.thumbnails.image(forFrame: frame.index),
+                                          isSelected: frame.index == selectedFrame,
+                                          isAudience: frame.index == audienceFrame,
+                                          isAppendix: presentation.document.isAppendix(page: frame.firstPage),
+                                          hasNotes: frame.pages.contains { presentation.notes.table.note(for: $0, frames: presentation.document.frames) != nil })
+                                    .onTapGesture { model.jump(to: frame.firstPage) }
+                                    .id(frame.index)
+                            }
+                        } header: {
+                            if let title = section.title { SectionDivider(title: title, depth: section.depth) }
                         }
                     }
-                    .padding(8)
                 }
-                .onAppear { model.overviewColumns = columns; proxy.scrollTo(selectedFrame, anchor: .center) }
-                .onChange(of: columns) { _, c in model.overviewColumns = c }
-                .onChange(of: selectedFrame) { _, frame in withAnimation(.easeInOut(duration: 0.1)) { proxy.scrollTo(frame) } }
+                .padding(.horizontal, 4).padding(.bottom, 8)
             }
+            .onAppear { model.overviewColumns = FrameGrid.columns; proxy.scrollTo(selectedFrame, anchor: .center) }
+            .onChange(of: selectedFrame) { _, frame in withAnimation(.easeInOut(duration: 0.1)) { proxy.scrollTo(frame) } }
         }
+    }
+}
+
+/// A titled horizontal rule between the frames of one outline section; subsections are indented.
+struct SectionDivider: View {
+    let title: String
+    let depth: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title.isEmpty ? "(untitled)" : title)
+                .font(.system(size: Theme.small, weight: .semibold))
+                .foregroundStyle(depth == 0 ? Color.primary : Color.secondary)
+                .lineLimit(1)
+                .padding(.leading, CGFloat(depth) * 12)
+            Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1)
+        }
+        .padding(.vertical, 6)
+        .background(Color.black)   // pinned headers scroll over the thumbnails
     }
 }
 
@@ -186,7 +231,7 @@ struct FrameCell: View {
     let aspect: CGFloat
     let image: CGImage?
     let isSelected: Bool
-    let isCommitted: Bool
+    let isAudience: Bool
     let isAppendix: Bool
     let hasNotes: Bool
 
@@ -200,8 +245,7 @@ struct FrameCell: View {
             }
             .aspectRatio(aspect, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 4))
-            .overlay(RoundedRectangle(cornerRadius: 4).stroke(isSelected ? Color.accentColor : (isCommitted ? .green : .clear), lineWidth: isSelected ? 6 : 3))
-            .shadow(color: isSelected ? Color.accentColor.opacity(0.9) : .clear, radius: 12)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(isSelected ? Color.accentColor : (isAudience ? .orange : .clear), lineWidth: isSelected ? 6 : 4))
             HStack(spacing: 6) {
                 Text(frame.label).font(.system(size: Theme.small, weight: .semibold))
                     .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
@@ -221,5 +265,6 @@ struct FrameCell: View {
                 }
             }
         }
+        .contentShape(Rectangle())
     }
 }

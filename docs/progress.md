@@ -384,3 +384,12 @@ Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-t
 - **Overview jumps directly** (branch `overview-direct`). Clicking a frame, an outline entry or a search hit goes there at once and closes the overview; the audience follows. Arrow keys move a cursor (blue) without changing the slide; the current frame stays green; Return jumps to the cursor; Esc closes. The private browse and its PREVIEW banner are gone from the Mac. ⌫ still returns to where the jump started. Self-test `-overview` checks that → moves only the cursor and Return jumps and closes.
 - **Overview stays open** after a click, Return, an outline entry or a search hit (branch `overview-stay`); Tab or Esc closes it. Under each frame: a stack icon with the build count beside the label (frames with more than one build), the appendix mark, and a notes icon at the right when the frame has notes. Self-test `-overview` now checks that Return keeps the overview open and Esc closes it.
 - **Present and Swap buttons** (branch `present-buttons`) in the status bar's right region, next to the LIVE pill: Present ⌥⌘P turns into End while presenting; Swap ⌥⌘D is dimmed without a second display. Tooltips explain that a TV or projector must be set to "Use As Separate Display", not mirroring. Icons only when the window is narrow.
+
+## Feedback round 4 (2026-10-27, branch `feedback-4`)
+
+1. **⌘D swaps displays**; ⌥⌘D belonged to the Dock. Menu, card, key map and SPEC §6.5 updated.
+2. **C** clears the drawing and turns Laser and Draw off (`Presentation.deactivateTools`). Self-test `-ink` checks both.
+3. **Present button carries the presenting state**: Present ⌥⌘P when idle; lit green "Live" (with an audience display) or "Rehearsal" (without) while presenting, Esc Esc hint, click to end. The LIVE / NOT PRESENTING pill and REHEARSAL tag are gone; FROZEN / BLACK / WHITE keep theirs.
+4. **Overview cursor**: thick blue stroke, no glow.
+5. **Audience ring** in the overview is orange and marks the frame the audience sees, so when frozen it stays on the frozen page while the cursor moves.
+6. **Overview layout**: the current slide keeps its size and position (same split fraction as the presenter layout); the right column becomes search plus a two-column grid, with the outline as titled dividers between the frames of each section (pinned while scrolling, subsections indented). ↑/↓ move the cursor by two.

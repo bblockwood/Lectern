@@ -39,7 +39,8 @@ private func key(_ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.M
     @MainActor @Test func timerAndDisplays() {
         #expect(KeyMap.action(for: key("t")) == .toggleTimer)
         #expect(KeyMap.action(for: key("t", modifiers: .option)) == .resetTimer)
-        #expect(KeyMap.action(for: key("d", modifiers: [.command, .option])) == .swapDisplays)
+        #expect(KeyMap.action(for: key("d", modifiers: [.command])) == .swapDisplays)
+        #expect(KeyMap.action(for: key("d", modifiers: [.command, .option])) == nil)   // the system's Dock toggle
         #expect(KeyMap.action(for: key("p", modifiers: [.command, .option])) == .startPresenting)
         #expect(KeyMap.action(for: key("f")) == .toggleFreeze)
         #expect(KeyMap.action(for: key("w")) == .toggleAudience(.white))
