@@ -179,7 +179,7 @@ Read all of these and merge them per page. Earlier sources take priority.
 
 - Text notes render as basic Markdown: emphasis, lists, inline code, line breaks. Font size is adjustable (⌘+/⌘−) and persists per device.
 - If a build has no notes, show its frame's notes.
-- An inline notes editor on the presenter screen writes to the sidecar: Mac in M3, iPad in M5.
+- An inline notes editor on the presenter screen writes to the sidecar: built on the Mac in M3 and removed in feedback round 6 (Ben, 2026-10-27): notes produced by a LaTeX workflow looked editable but the edits only went to the sidecar, which was too easy to mistake for saving. Revisit with a clear "sidecar note" affordance, iPad in M5 at the earliest.
 
 ---
 
@@ -211,8 +211,8 @@ Read all of these and merge them per page. Earlier sources take priority.
 
 ### 6.3 Overview and jumping
 
-- The overview opens with Tab. On the Mac it keeps the current slide exactly where the presenter layout puts it and replaces the next-slide and notes column with a search field and a two-column grid of frames (Ben, 2026-10-27; section dividers were tried and dropped, since decks with one frame per section left half the grid empty). The cursor is blue; the frame the audience sees is ringed orange, the FROZEN colour, since that is when it differs from the presenter's.
-- On the Mac (Ben, 2026-10-27): a click on a frame, an outline entry or a search hit jumps there at once and pushes history; the audience follows immediately and the overview stays open. Arrow keys move a cursor without changing the slide; Enter jumps to the cursor; Tab or Esc closes the overview. Under each frame: the build count beside the label when there is more than one, an appendix mark, and a notes icon at the right when the frame has notes. The private-browse commands (`beginBrowse`, `browseTo`, `commitBrowse`, `cancelBrowse`) stay in the protocol and reducer for a presenter-only preview on other platforms or remotes, but the Mac overview no longer uses them, so the "PREVIEW: audience sees Frame N" banner does not appear there.
+- The overview opens with Tab or the Overview button at the top right of the right column, which stays lit while in it. On the Mac it keeps the current slide exactly where the presenter layout puts it and replaces the next-slide and notes column with a search field and a two-column grid of frames (Ben, 2026-10-27; section dividers were tried and dropped, since decks with one frame per section left half the grid empty). Every key keeps its presenting meaning, so the talk can go on with the overview open: → and Space advance, digits jump, and the grid follows. The current frame is ringed blue; when frozen, the frame the audience sees is ringed orange, the FROZEN colour.
+- On the Mac (Ben, 2026-10-27): a click on a frame, an outline entry or a search hit jumps there at once and pushes history; the audience follows immediately and the overview stays open. Tab or Esc closes the overview. Under each frame: the build count beside the label when there is more than one, an appendix mark, and a notes icon at the right when the frame has notes.
 - Jump by number: typing digits then Return, from anywhere, goes to the frame with that label and pushes history. Return with no digits typed means `next`.
 
 ### 6.4 Pointer
@@ -234,17 +234,17 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 | Back (return from jump) | Delete, ⌘[ |
 | Overview | Tab |
 | Jump to frame | digits + Return |
-| Black / white screen | B or `.` / W |
-| Freeze audience | F |
+| Black / white screen | B or `.` / W (only while presenting; ending presenting returns the audience to live) |
+| Freeze audience | F (only while presenting) |
 | Laser pointer | L |
 | Draw / clear drawing | D / C (C also turns Laser and Draw off) |
 | Next build (also) | click on the current or next slide |
 | Full screen | ⌃⌘F |
-| Keyboard-shortcut card | ⌘/ or ? toggles it (Help ▸ Keyboard Shortcuts); Esc, a click outside or going to the background closes it; its rows are clickable. (A hold-⌘ trigger was tried and dropped: apps never see ⌘-Tab, so the card popped up over the app switcher.) |
+| Keyboard-shortcut card | ⌘/ or ? toggles it (Help ▸ Keyboard Shortcuts); any key, a click outside or going to the background closes it (the key still does its job, except Esc); its rows are clickable. (A hold-⌘ trigger was tried and dropped: apps never see ⌘-Tab, so the card popped up over the app switcher.) |
 | Timer start-pause / reset | T / ⌥T |
 | Swap displays | ⌘D (⌥⌘D is the system's Dock toggle) |
 | Start presenting | ⌥⌘P, F5 |
-| End presenting | Esc twice within 1 s (single Esc cancels browse) |
+| End presenting | Esc twice within 1 s (a single Esc first clears typed digits, then turns Laser / Draw off, then closes the overview) |
 
 ### 6.6 Live reload
 

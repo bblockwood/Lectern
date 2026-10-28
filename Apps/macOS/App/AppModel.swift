@@ -31,7 +31,6 @@ enum AppAction: Equatable {
     case toggleDraw
     case notesFontLarger
     case notesFontSmaller
-    case editNotes
     /// ⌘/ or ?: the keyboard-shortcut card on / off.
     case toggleShortcutCard
 }
@@ -54,18 +53,13 @@ final class AppModel {
     private(set) var isPresenting = false
     private(set) var banners: [Banner] = []
     private(set) var rehearsalAudienceWindowVisible = false
+    /// The overview replaces the next-slide and notes column; every key keeps its presenting meaning there, so
+    /// the talk can go on with it open (feedback round 6).
     private(set) var overviewVisible = false
-    /// The overview's cursor (a frame index). Arrows move it without changing the slide; Return or a click
-    /// jumps there. Nothing in the overview previews privately any more (Ben found the frozen audience awkward).
-    private(set) var overviewSelectedFrame: Int?
     /// Digits typed for jump-by-number; shown as an overlay until Return or a timeout.
     private(set) var jumpBuffer = ""
     /// Bumped to ask the overview to focus its search field.
     private(set) var searchFocusRequest = 0
-    /// Columns of the overview grid, reported by the view, for ↑/↓ moves.
-    var overviewColumns = 4
-    /// Inline notes editor open (SPEC §5.2).
-    private(set) var notesEditing = false
     /// The keyboard-shortcut card: ⌘/ or ? toggles it; Esc, a click outside or a row click closes it.
     private(set) var shortcutOverlayVisible = false
     /// Bumped to ask the status bar to open the countdown editor on the timer (menu "Custom…").
@@ -126,7 +120,6 @@ final class AppModel {
             presentation?.stopWatching()
             let presentation = Presentation(document: document, surroundColor: surroundColor)
             self.presentation = presentation
-            notesEditing = false
             for surface in [presentation.audienceSurface, presentation.currentSurface] {
                 surface.view.onLinkActivate = { [weak self] id in _ = self?.perform(.followLink(id)) }
             }
@@ -185,18 +178,10 @@ final class AppModel {
         guard let presentation else { return false }
         switch action {
         case .command(let command):
-            if overviewVisible, let move = overviewMove(for: command) {
-                moveOverviewSelection(by: move)
-            } else {
-                if command == .clearInk { presentation.deactivateTools() }
-                presentation.apply(command)
-            }
+            if command == .clearInk { presentation.deactivateTools() }
+            presentation.apply(command)
         case .verticalArrow(let up):
-            if overviewVisible {
-                moveOverviewSelection(by: (up ? -1 : 1) * overviewColumns)
-            } else {
-                presentation.apply(up ? .previous : .next)
-            }
+            presentation.apply(up ? .previous : .next)
         case .toggleOverview:
             setOverview(visible: !overviewVisible)
         case .digit(let digit):
@@ -219,8 +204,6 @@ final class AppModel {
                 } else {
                     show(Banner(kind: .info, text: "No frame labelled \(label)."), autoDismissAfter: 2)
                 }
-            } else if overviewVisible {
-                commitOverviewSelection()
             } else {
                 presentation.apply(.next)
             }
@@ -237,13 +220,13 @@ final class AppModel {
             notesFontSize += 2
         case .notesFontSmaller:
             notesFontSize -= 2
-        case .editNotes:
-            notesEditing.toggle()
         case .toggleShortcutCard:
             setShortcutOverlay(visible: !shortcutOverlayVisible)
         case .toggleAudience(let mode):
+            guard isPresenting else { break }   // no audience window, nothing to black out (feedback round 6)
             presentation.apply(.setAudienceMode(presentation.state.audienceMode == mode ? .live : mode))
         case .toggleFreeze:
+            guard isPresenting else { break }
             if case .frozen = presentation.state.audienceMode {
                 presentation.apply(.setAudienceMode(.live))
             } else {
@@ -264,39 +247,12 @@ final class AppModel {
     func setOverview(visible: Bool) {
         guard visible != overviewVisible else { return }
         overviewVisible = visible
-        overviewSelectedFrame = visible ? presentation?.currentFrame.index : nil
     }
 
     /// Jump straight to `page` (a click on a frame, an outline entry or a search hit). The audience follows at
     /// once; the overview stays open until Tab or Esc; ⌫ returns to where the jump started.
     func jump(to page: Int) {
-        guard let presentation else { return }
-        presentation.apply(.goToPage(page))
-        if overviewVisible { overviewSelectedFrame = presentation.currentFrame.index }
-    }
-
-    /// Return in the overview: jump to the frame under the cursor.
-    func commitOverviewSelection() {
-        guard let presentation else { return }
-        let frames = presentation.document.frames
-        guard let index = overviewSelectedFrame, frames.frames.indices.contains(index) else { return }
-        jump(to: frames.frames[index].firstPage)
-    }
-
-    private func overviewMove(for command: Command) -> Int? {
-        switch command {
-        case .next, .nextFrame: 1
-        case .previous, .previousFrame: -1
-        default: nil
-        }
-    }
-
-    /// Arrow keys move the overview's cursor; the slide does not change until Return.
-    private func moveOverviewSelection(by delta: Int) {
-        guard let presentation else { return }
-        let count = presentation.document.frames.frameCount
-        let current = overviewSelectedFrame ?? presentation.currentFrame.index
-        overviewSelectedFrame = min(max(current + delta, 0), count - 1)
+        presentation?.apply(.goToPage(page))
     }
 
     private func follow(link id: LinkID, in presentation: Presentation) {
@@ -323,11 +279,17 @@ final class AppModel {
         }
     }
 
-    /// Esc: clears typed digits, then closes the overview; twice within a second ends presenting.
+    /// Esc: clears typed digits, then turns Laser / Draw off, then closes the overview; twice within a second
+    /// ends presenting.
     private func handleEscape() -> Bool {
         if !jumpBuffer.isEmpty {
             jumpBuffer = ""
             jumpBufferTimeout?.cancel()
+            return true
+        }
+        if let presentation, presentation.pointerMode || presentation.drawMode {
+            presentation.deactivateTools()
+            escapeArmedUntil = nil
             return true
         }
         if overviewVisible {
@@ -357,10 +319,6 @@ final class AppModel {
 
     func setNotesShowsContents(_ contents: Bool) {
         notesShowsContents = contents
-    }
-
-    func setNotesEditing(_ editing: Bool) {
-        notesEditing = editing
     }
 
     func requestCountdownEditor() {
@@ -417,6 +375,7 @@ final class AppModel {
     func endPresenting() {
         guard isPresenting else { return }
         isPresenting = false
+        if let presentation, presentation.state.audienceMode != .live { presentation.apply(.setAudienceMode(.live)) }
         audienceWindow?.hide()
         rehearsalAudienceWindowVisible = false
         power = nil

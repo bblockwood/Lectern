@@ -34,7 +34,7 @@ enum ShortcutReference {
             Shortcut("⌫  ⌘[", "Back after a jump") { _ = $0.perform(.command(.back)) },
             Shortcut("Tab", "Overview on / off") { _ = $0.perform(.toggleOverview) },
             Shortcut("⌘F", "Search the deck") { _ = $0.perform(.focusSearch) },
-            Shortcut("Esc", "Close overview / preview") { _ = $0.perform(.escape) },
+            Shortcut("Esc", "Tools off, close overview") { _ = $0.perform(.escape) },
         ])],
         [ShortcutGroup(title: "Audience", shortcuts: [
             Shortcut("B", "Black screen") { _ = $0.perform(.toggleAudience(.black)) },
@@ -57,7 +57,6 @@ enum ShortcutReference {
             Shortcut("C", "Clear drawing, tools off") { _ = $0.perform(.command(.clearInk)) },
             Shortcut("T", "Start / pause the timer") { _ = $0.perform(.toggleTimer) },
             Shortcut("⌥T", "Reset the timer") { _ = $0.perform(.resetTimer) },
-            Shortcut("⌘E", "Edit notes") { _ = $0.perform(.editNotes) },
             Shortcut("⌘+  ⌘−", "Notes size"),
             Shortcut("⌘R", "Reload the deck") { $0.presentation?.reloadDocument() },
         ])],

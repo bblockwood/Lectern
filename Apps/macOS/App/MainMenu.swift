@@ -48,7 +48,6 @@ enum MainMenu {
         presentation.addItem(item("Draw on Slide (D)", #selector(AppDelegate.toggleDraw(_:)), "", target))
         presentation.addItem(item("Clear Drawing, Tools Off (C)", #selector(AppDelegate.clearInk(_:)), "", target))
         presentation.addItem(.separator())
-        presentation.addItem(item("Edit Notes", #selector(AppDelegate.editNotes(_:)), "e", target))
         presentation.addItem(item("Bigger Notes", #selector(AppDelegate.notesLarger(_:)), "=", target))
         presentation.addItem(item("Smaller Notes", #selector(AppDelegate.notesSmaller(_:)), "-", target))
         presentation.addItem(item("Reload Deck Now", #selector(AppDelegate.reloadDeck(_:)), "r", target))

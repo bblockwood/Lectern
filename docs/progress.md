@@ -398,3 +398,15 @@ Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-t
 
 1. **Overview without section dividers**: a plain two-column grid again; the outline remains in the notes pane's Contents list.
 2. **Shortcut card on ⌘/ or ?** (Help ▸ Keyboard Shortcuts), closed by Esc, a click outside, a row click, or the app going to the background. The hold-⌘ trigger went: ⌘-Tab is never delivered to apps and the app stays active while the switcher is up, so a hold cannot be told from a system chord (see decisions). The Settings toggle and the modifier monitors are gone; the welcome hint says "? for every shortcut". Self-test `-shortcuts` drives ?, ⌘/, Esc, a click outside and a row click.
+
+## Feedback round 6 (2026-10-27, branch `feedback-6`)
+
+1. **Any key closes the shortcut card** and still does its job (Esc and ⌘/ / ? only close it).
+2. **Overview labels stay white**; only the ring is blue.
+3. **Esc turns Laser / Draw off** before anything else (after clearing typed digits).
+4. **Overview button** at the top right of the right column, lit while in the overview; Tab unchanged. Both pane headers now share `Theme.paneHeader`, so the slide tops still line up.
+5. **Hint** under the slide reads "Click to advance" in the same style as the Draw hint.
+6. **Contents list**: a section whose first subsection starts on the same page shows no frame number.
+7. **B / W / F only while presenting**: keys and menu items are inert otherwise, the pills are hidden, and ending presenting returns the audience to live.
+8. **Notes editing removed** (⌘E, Edit / Done, the editor); the sidecar's existing user notes still load.
+9. **Overview is a presenting mode**: every key keeps its meaning (→, Space, digits, frames, back), the blue ring follows the current frame and the orange one the audience's when frozen; clicks jump; the cursor and its ↑/↓ row moves are gone. Self-test `-overview` presses → and Space with the overview open.
