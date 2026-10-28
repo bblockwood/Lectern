@@ -326,49 +326,30 @@ final class SelfTest {
         print("ROUNDTRIP \(ok ? "OK" : "FAIL"): page \(before + 1) → click link → page \(afterClick + 1) → Delete → page \(afterBack + 1); history \(presentation.state.history), forward \(presentation.state.forwardHistory)")
     }
 
-    /// Feedback round 2: a ⌘ tap toggles the card; Esc and a click outside close it; a row click runs its command;
-    /// ⌘ plus a key never flashes it.
+    /// The shortcut card: ? and ⌘/ toggle it; Esc and a click outside close it; a row click runs its command.
     private func shortcutsCheck(model: AppModel, presentation: Presentation) async {
-        func hold(_ ms: Int) async {
-            postFlags([.command])
-            try? await Task.sleep(for: .milliseconds(ms))
-            let duringHold = model.shortcutOverlayVisible
-            postFlags([])
-            try? await Task.sleep(for: .milliseconds(200))
-            lastHoldShowedBeforeRelease = duringHold
-        }
-        await hold(100)
-        let tapIgnored = !model.shortcutOverlayVisible
-        await hold(750)
-        let shownByHold = lastHoldShowedBeforeRelease && model.shortcutOverlayVisible   // and still up after release
+        await press(keyCode: 44, character: "?", modifiers: [.shift])
+        let shownByQuestion = model.shortcutOverlayVisible
         captureScreenshots(suffix: "-shortcuts")
-        await hold(100)
-        let hiddenByTap = !model.shortcutOverlayVisible
-        await hold(750)
+        await press(keyCode: 44, character: "?", modifiers: [.shift])
+        let hiddenByQuestion = !model.shortcutOverlayVisible
+        await press(keyCode: 44, character: "/", modifiers: [.command])
+        let shownBySlash = model.shortcutOverlayVisible
         await press(keyCode: 53, character: "\u{1b}")
         let hiddenByEsc = !model.shortcutOverlayVisible
-        await hold(750)
+        await press(keyCode: 44, character: "/", modifiers: [.command])
         let pageBefore = presentation.state.committedPage
         await click(on: presentation.currentSurface.view, at: (0.02, 0.02), awaitSample: false)   // outside the card
         try? await Task.sleep(for: .milliseconds(250))
         let hiddenByClick = !model.shortcutOverlayVisible, stayed = presentation.state.committedPage == pageBefore
-        postFlags([.command])
-        try? await Task.sleep(for: .milliseconds(200))
-        await press(keyCode: 38, character: "j", modifiers: [.command])   // ⌘J: bound to nothing; cancels the hold
-        try? await Task.sleep(for: .milliseconds(500))
-        postFlags([])
-        try? await Task.sleep(for: .milliseconds(200))
-        let noFlash = !model.shortcutOverlayVisible
-        await hold(750)
+        await press(keyCode: 44, character: "?", modifiers: [.shift])
         if let next = ShortcutReference.shortcut(named: "Next build") { model.run(next) }
         try? await Task.sleep(for: .milliseconds(250))
         let rowRan = presentation.state.committedPage == pageBefore + 1 && !model.shortcutOverlayVisible
         if rowRan { _ = model.perform(.command(.previous)) }
-        let ok = tapIgnored && shownByHold && hiddenByTap && hiddenByEsc && hiddenByClick && stayed && noFlash && rowRan
-        print("SHORTCUTS \(ok ? "OK" : "FAIL"): short tap ignored \(tapIgnored); 750 ms hold shows and release keeps it \(shownByHold); tap hides \(hiddenByTap); Esc hides \(hiddenByEsc); click outside hides \(hiddenByClick) without advancing \(stayed); ⌘J during a hold does not show it \(noFlash); clicking the Next build row advanced and closed it \(rowRan)")
+        let ok = shownByQuestion && hiddenByQuestion && shownBySlash && hiddenByEsc && hiddenByClick && stayed && rowRan
+        print("SHORTCUTS \(ok ? "OK" : "FAIL"): ? shows \(shownByQuestion) and hides \(hiddenByQuestion); ⌘/ shows \(shownBySlash); Esc hides \(hiddenByEsc); click outside hides \(hiddenByClick) without advancing \(stayed); clicking the Next build row advanced and closed it \(rowRan)")
     }
-
-    private var lastHoldShowedBeforeRelease = false
 
     /// Posts a click at a normalised point of a slide surface through the real event path; waits for the latency
     /// sample it produces when `awaitSample` is set.
@@ -396,16 +377,6 @@ final class SelfTest {
             NSApp.postEvent(event(.leftMouseUp, pressure: 0), atStart: false)
         }
         try? await Task.sleep(for: .milliseconds(120))
-    }
-
-    /// Posts a modifier change (⌘ down or up) the way the keyboard would.
-    private func postFlags(_ flags: NSEvent.ModifierFlags) {
-        guard let window = NSApp.windows.first(where: { $0 is PresenterWindow }),
-              let event = NSEvent.keyEvent(with: .flagsChanged, location: .zero, modifierFlags: flags,
-                                           timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-                                           context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 55)
-        else { return }
-        NSApp.postEvent(event, atStart: false)
     }
 
     private func press(keyCode: UInt16, character: String, shift: Bool = false, modifiers: NSEvent.ModifierFlags = []) async {

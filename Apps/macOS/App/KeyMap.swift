@@ -43,6 +43,7 @@ enum KeyMap {
         if command {
             switch key {
             case "d": return .swapDisplays   // ⌘D; ⌥⌘D is the system's Dock toggle (feedback round 4)
+            case "/": return .toggleShortcutCard
             case "[": return .command(.back)
             case "f": return .focusSearch
             case "=", "+": return .notesFontLarger
@@ -59,6 +60,7 @@ enum KeyMap {
         case "w": return .toggleAudience(.white)
         case "f": return .toggleFreeze
         case "t": return option ? .resetTimer : .toggleTimer
+        case "?": return .toggleShortcutCard
         case "l": return .togglePointer
         case "d": return .toggleDraw
         case "c": return .command(.clearInk)

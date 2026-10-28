@@ -46,6 +46,7 @@ enum ShortcutReference {
         ]),
          ShortcutGroup(title: "App", shortcuts: [
             Shortcut("⌃⌘F", "Full screen") { $0.toggleFullScreen() },
+            Shortcut("⌘/  ?", "This card") { $0.setShortcutOverlay(visible: false) },
             Shortcut("⌘,", "Settings") { $0.showSettings() },
             Shortcut("⌘O", "Open a deck") { $0.openPanel() },
             Shortcut("⌘W", "Close the deck") { $0.close() },
@@ -70,9 +71,9 @@ enum ShortcutReference {
     }
 }
 
-/// The shortcut card (feedback rounds 1 and 2). A tap of ⌘ on its own shows it; it stays until ⌘ is tapped again,
-/// Esc is pressed, a row is clicked (which runs that command) or the backdrop is clicked. The backdrop takes the
-/// click so nothing underneath, such as a slide, reacts to it.
+/// The keyboard-shortcut card. ⌘/ or ? (Help ▸ Keyboard Shortcuts) toggles it; it stays until Esc, a row click
+/// (which runs that command), a click on the backdrop, or the app going to the background. The backdrop takes
+/// the click so nothing underneath, such as a slide, reacts to it.
 struct ShortcutOverlay: View {
     let model: AppModel
 
@@ -98,7 +99,7 @@ struct ShortcutOverlay: View {
                         }
                     }
                 }
-                Text("Click a shortcut to run it. Tap ⌘, press Esc or click outside to close. Turn this off in Settings (⌘,).")
+                Text("Click a shortcut to run it. ⌘/ or ?, Esc, or a click outside closes this card.")
                     .font(.system(size: Theme.small)).foregroundStyle(.tertiary)
             }
             .padding(24)
