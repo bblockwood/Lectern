@@ -34,4 +34,4 @@ That file is gitignored, so it has to be created on each machine.
 
 ## Layout
 
-See `CLAUDE.md` for the repo layout, conventions and gotchas, `docs/decisions.md` for design decisions, and `docs/spikes/` for the M0 prototype findings.
+See `CLAUDE.md` for the repo layout, conventions and gotchas, `docs/decisions.md` for design decisions, and `docs/spikes/` for the M0 prototype findings. The app icon's source lives in `Design/AppIcon/`; `swift Design/AppIcon/make-appicon.swift` rebuilds the asset catalog from it.
