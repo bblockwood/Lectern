@@ -220,11 +220,14 @@ struct ModeButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: symbol)
-                Text(title).fixedSize()
-                Text(key)
-                    .font(.system(size: Theme.small, weight: .semibold, design: .rounded))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background((isOn ? Color.black : Color.white).opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+                if !title.isEmpty { Text(title).fixedSize() }
+                if !key.isEmpty {
+                    Text(key)
+                        .font(.system(size: Theme.small, weight: .semibold, design: .rounded))
+                        .fixedSize()
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background((isOn ? Color.black : Color.white).opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+                }
             }
             .font(.system(size: Theme.body, weight: .semibold))
             .padding(.horizontal, 14).padding(.vertical, 8)
@@ -233,7 +236,7 @@ struct ModeButton: View {
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(title) mode")
+        .accessibilityLabel(title.isEmpty ? symbol : title)
         .accessibilityValue(isOn ? "on" : "off")
     }
 }
@@ -518,9 +521,9 @@ struct BannerStack: View {
     }
 }
 
-/// Frame label and total, build x/y, the timer, wall clock and the audience indicator (SPEC §6.2).
-/// Three fixed regions: frame info on the left, the timer always centred, the audience state on the right, so
-/// nothing shifts as the text on the left changes width (feedback round 1).
+/// Frame label and total, build x/y, the timer, wall clock, the audience indicator and the Present / Swap
+/// buttons (SPEC §6.2). Three fixed regions: frame info on the left, the timer always centred, the audience
+/// state and buttons on the right, so nothing shifts as the text on the left changes width (feedback round 1).
 ///
 /// The timer counts up in white until a countdown is set (pdfpc duration, sidecar, or by clicking the timer);
 /// then the time left takes its place, green while there is some and red, counting up again, once it has run
@@ -555,7 +558,10 @@ struct StatusBar: View {
                 }
                 HStack {
                     Spacer()
-                    if let presentation = model.presentation { audienceIndicator(presentation: presentation) }
+                    if let presentation = model.presentation {
+                        audienceIndicator(presentation: presentation)
+                        presentingButtons
+                    }
                 }
             }
             .font(.system(size: Theme.statusSecondary, design: .rounded))
@@ -620,6 +626,42 @@ struct StatusBar: View {
                 .background(color.opacity(0.25), in: Capsule())
                 .foregroundStyle(color)
         }
+    }
+
+    /// Present / End and Swap displays, so presenting on a second screen is discoverable without the menu
+    /// (Ben, 2026-10-27). Icons only when the bar is too narrow for the words.
+    @ViewBuilder private var presentingButtons: some View {
+        let canSwap = model.displays.assignment.audience != nil
+        let presentHelp = model.isPresenting
+            ? "End presenting (Esc Esc)"
+            : "Present on the largest external display; with one display, in a rehearsal window (⌥⌘P). Set a TV or projector to \"Use As Separate Display\", not mirroring."
+        let swapHelp = canSwap ? "Swap which display shows the audience (⌥⌘D)" : "Connect a second display as an extended display, not mirrored, to swap"
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                ModeButton(title: model.isPresenting ? "End" : "Present", key: model.isPresenting ? "Esc Esc" : "⌥⌘P",
+                           symbol: model.isPresenting ? "stop.fill" : "play.fill", color: .green, isOn: model.isPresenting) {
+                    if model.isPresenting { model.endPresenting() } else { _ = model.perform(.startPresenting) }
+                }
+                .help(presentHelp)
+                ModeButton(title: "Swap", key: "⌥⌘D", symbol: "arrow.left.arrow.right", color: .gray, isOn: false) {
+                    _ = model.perform(.swapDisplays)
+                }
+                .disabled(!canSwap).opacity(canSwap ? 1 : 0.4)
+                .help(swapHelp)
+            }
+            HStack(spacing: 8) {
+                ModeButton(title: "", key: "", symbol: model.isPresenting ? "stop.fill" : "play.fill", color: .green, isOn: model.isPresenting) {
+                    if model.isPresenting { model.endPresenting() } else { _ = model.perform(.startPresenting) }
+                }
+                .help(presentHelp)
+                ModeButton(title: "", key: "", symbol: "arrow.left.arrow.right", color: .gray, isOn: false) {
+                    _ = model.perform(.swapDisplays)
+                }
+                .disabled(!canSwap).opacity(canSwap ? 1 : 0.4)
+                .help(swapHelp)
+            }
+        }
+        .padding(.leading, 8)
     }
 
     static func format(_ seconds: TimeInterval) -> String {
