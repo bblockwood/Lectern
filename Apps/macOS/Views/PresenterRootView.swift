@@ -169,36 +169,45 @@ struct CurrentSlidePane: View {
     }
 }
 
-/// Laser / Draw / Clear, lit when active; the same actions as L, D and C. Each label starts with its key
-/// (feedback round 2).
+/// Under the current slide: Laser / Draw on the left (lit when active, the same actions as L and D; Clear joins
+/// them in Draw mode), a hint for the active tool, and at the right Back / Forward after a jump (feedback round 7).
 struct ModeBar: View {
     let model: AppModel
     let presentation: Presentation
 
     var body: some View {
-        // The hint only appears when the row has room for it (the overview's current pane is narrow).
+        // Widest first; the hint goes when room is short, then the Back / Forward titles.
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
-                buttons
+                tools
                 Spacer(minLength: 16)
                 hint.lineLimit(1).fixedSize()
+                navigation(compact: false)
             }
             HStack(spacing: 10) {
-                buttons
+                tools
+                Spacer(minLength: 16)
+                navigation(compact: false)
+            }
+            HStack(spacing: 10) {
+                tools
                 Spacer(minLength: 0)
+                navigation(compact: true)
             }
         }
     }
 
-    @ViewBuilder private var buttons: some View {
+    @ViewBuilder private var tools: some View {
         ModeButton(title: "Laser", key: "L", symbol: "cursorarrow.rays", color: .red, isOn: presentation.pointerMode) {
             _ = model.perform(.togglePointer)
         }
         ModeButton(title: "Draw", key: "D", symbol: "pencil.tip", color: .orange, isOn: presentation.drawMode) {
             _ = model.perform(.toggleDraw)
         }
-        ModeButton(title: "Clear", key: "C", symbol: "eraser", color: .gray, isOn: false) {
-            _ = model.perform(.command(.clearInk))
+        if presentation.drawMode {
+            ModeButton(title: "Clear", key: "C", symbol: "eraser", color: .gray, isOn: false) {
+                _ = model.perform(.command(.clearInk))
+            }
         }
     }
 
@@ -207,9 +216,38 @@ struct ModeBar: View {
             Text("Move the mouse over the slide").font(.system(size: Theme.small)).foregroundStyle(.secondary)
         } else if presentation.drawMode {
             Text("Draw on the slide; C clears, so does the next build").font(.system(size: Theme.small)).foregroundStyle(.secondary)
-        } else {
-            Text("Click to advance").font(.system(size: Theme.small)).foregroundStyle(.secondary)
         }
+    }
+
+    /// After a jump (a link, the overview, the contents list, a search hit, a typed number) Back names where it
+    /// returns to; after a Back, Forward offers the way on again. Steps never touch either, so a few builds shown at
+    /// the jump's target still return to where the jump started (feedback round 7).
+    @ViewBuilder private func navigation(compact: Bool) -> some View {
+        let state = presentation.state
+        if let target = state.backTarget {
+            ModeButton(title: compact ? "" : "Back to \(destination(target))", key: compact ? "" : "⌫",
+                       symbol: "arrow.uturn.backward", color: .gray, isOn: false) {
+                _ = model.perform(.command(.back))
+            }
+            .help("Back to \(destination(target)), where the last jump started (⌫, ⌘[)")
+            .accessibilityLabel("Back to \(destination(target))")
+        }
+        if let target = state.forwardTarget {
+            ModeButton(title: compact ? "" : "Forward to \(destination(target))", key: compact ? "" : "⌘]",
+                       symbol: "arrow.uturn.forward", color: .gray, isOn: false) {
+                _ = model.perform(.command(.forward))
+            }
+            .help("Forward to \(destination(target)), where Back came from (⌘])")
+            .accessibilityLabel("Forward to \(destination(target))")
+        }
+    }
+
+    /// "Frame 12", or "build 3" when the target is another build of the frame on screen.
+    private func destination(_ page: Int) -> String {
+        let frames = presentation.document.frames
+        let frame = frames.frame(containing: page)
+        if frame.index == presentation.currentFrame.index { return "build \(frames.buildIndex(of: page) + 1)" }
+        return "Frame \(frame.label)"
     }
 }
 
@@ -525,9 +563,10 @@ struct BannerStack: View {
 /// buttons (SPEC §6.2). Three fixed regions: frame info on the left, the timer always centred, the audience
 /// state and buttons on the right, so nothing shifts as the text on the left changes width (feedback round 1).
 ///
-/// The timer counts up in white until a countdown is set (pdfpc duration, sidecar, or by clicking the timer);
-/// then the time left takes its place, green while there is some and red, counting up again, once it has run
-/// out (feedback round 2).
+/// The clock runs only while presenting (feedback round 7): idle it shows 00:00, or the countdown, with an arrow for
+/// the direction it will run; paused mid-talk it shows the pause mark. It counts up in white until a countdown is set
+/// (pdfpc duration, sidecar, or by clicking the timer); then the time left takes its place, green while there is some
+/// and red, counting up again, once it has run out (feedback round 2). Clicking it offers a countdown and Reset.
 struct StatusBar: View {
     let model: AppModel
     @State private var countdownEditorShown = false
@@ -580,7 +619,8 @@ struct StatusBar: View {
         HStack(spacing: 20) {
             Button { countdownEditorShown = true } label: { timerText(timer, now: now) }
                 .buttonStyle(.plain)
-                .help("Click to set a countdown")
+                .help(timer.isRunning ? "Click to set a countdown or reset the clock. T pauses it."
+                      : "The clock runs while presenting or rehearsing. Click to set a countdown or reset it.")
                 .popover(isPresented: $countdownEditorShown, arrowEdge: .top) {
                     CountdownEditor(model: model, presentation: presentation, isPresented: $countdownEditorShown)
                 }
@@ -590,20 +630,25 @@ struct StatusBar: View {
 
     @ViewBuilder
     private func timerText(_ timer: TimerState, now: Date) -> some View {
-        let icon = timer.isRunning ? "timer" : "pause.circle"
+        // The arrow says which way the clock runs, or will run once presenting starts; a clock paused mid-talk shows
+        // the pause mark instead. Dimmed whenever it is not running (feedback round 7).
+        let paused = !timer.isRunning && timer.elapsed(at: now) > 0
+        let icon = paused ? "pause.circle" : (timer.target != nil ? "arrow.down" : "arrow.up")
+        let state = timer.isRunning ? "" : (paused ? ", paused" : ", starts with presenting")
         if let remaining = timer.remaining(at: now) {
             let over = remaining.rounded() < 0
             Label((over ? "−" : "") + StatusBar.format(abs(remaining)), systemImage: icon)
                 .font(.system(size: Theme.status, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(over ? Color.red : Color.green)
-                .accessibilityLabel(over ? "Over time" : "Time left")
+                .opacity(timer.isRunning ? 1 : 0.6)
+                .accessibilityLabel((over ? "Over time" : "Time left") + state)
         } else {
             Label(StatusBar.format(timer.elapsed(at: now)), systemImage: icon)
                 .font(.system(size: Theme.status, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(timer.isRunning ? .primary : .secondary)
-                .accessibilityLabel("Elapsed")
+                .accessibilityLabel("Elapsed" + state)
         }
     }
 
@@ -612,7 +657,7 @@ struct StatusBar: View {
     @ViewBuilder
     private func audienceIndicator(presentation: Presentation) -> some View {
         let mode: (String, Color)? = {
-            guard model.isPresenting else { return nil }   // no audience window, no mode to show
+            guard model.isLive else { return nil }   // no audience view, no mode to show
             switch presentation.state.audienceMode {
             case .live: return nil
             case .frozen: return ("FROZEN", .orange)
@@ -629,26 +674,35 @@ struct StatusBar: View {
         }
     }
 
-    /// Present / Live / Rehearsal and Swap displays, so presenting on a second screen is discoverable without
-    /// the menu (Ben, 2026-10-27). The button's lit state is the presenting indicator: "Live" with an audience
-    /// display, "Rehearsal" without; clicking it ends presenting. Icons only when the bar is too narrow.
+    /// Present (⇧⌘P), Rehearse (⇧⌘R) and Swap displays (⌘D), so presenting is discoverable without the menu
+    /// (Ben, 2026-10-27). The lit button is the mode indicator: green "Live" or teal "Rehearsing"; clicking the lit
+    /// one ends, clicking the other switches mode without ending (feedback round 7). After one Esc the lit button
+    /// turns orange and reads "Esc again to end". Icons only when the bar is too narrow.
     @ViewBuilder private var presentingButtons: some View {
         let canSwap = model.displays.assignment.audience != nil
         let armed = model.escapeArmed
-        let presentTitle = armed ? "Esc again to end" : model.isPresenting ? (canSwap ? "Live" : "Rehearsal") : "Present"
-        let presentHelp = model.isPresenting
-            ? (canSwap ? "Presenting on \(model.displays.assignment.audience?.name ?? "the external display"). Click to end (Esc Esc)."
-                       : "Presenting in a rehearsal window, no second display. Click to end (Esc Esc).")
-            : "Present on the largest external display; with one display, in a rehearsal window (⌥⌘P). Set a TV or projector to \"Use As Separate Display\", not mirroring."
+        let live = model.isLive, rehearsing = model.presentingMode == .rehearsal
+        let audienceName = model.displays.assignment.audience?.name ?? "the external display"
+        let presentTitle = live ? (armed ? "Esc again to end" : "Live") : "Present"
+        let rehearseTitle = rehearsing ? (armed ? "Esc again to end" : "Rehearsing") : "Rehearse"
+        let presentHelp = live
+            ? (canSwap ? "Presenting on \(audienceName). Click to end (Esc Esc)."
+                       : "Presenting with the audience view in a window, no second display. Click to end (Esc Esc).")
+            : "Show the audience view: on the largest external display, or in a window with one display (⇧⌘P, F5). Set a TV or projector to \"Use As Separate Display\", not mirroring."
+        let rehearseHelp = rehearsing
+            ? "Rehearsing: no audience view, the clock running. Click to end (Esc Esc)."
+            : "Run through the talk with the clock and no audience view (⇧⌘R)."
         let swapHelp = canSwap ? "Swap which display shows the audience (⌘D)" : "Connect a second display as an extended display, not mirrored, to swap"
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
-                ModeButton(title: presentTitle, key: armed ? "" : model.isPresenting ? "Esc Esc" : "⌥⌘P",
-                           symbol: model.isPresenting ? "stop.fill" : "play.fill", color: armed ? .orange : .green, isOn: model.isPresenting) {
-                    if model.isPresenting { model.endPresenting() } else { _ = model.perform(.startPresenting) }
-                }
-                .help(presentHelp)
-                .animation(.easeInOut(duration: 0.15), value: armed)
+                ModeButton(title: presentTitle, key: live ? (armed ? "" : "Esc Esc") : "⇧⌘P",
+                           symbol: live ? "stop.fill" : "play.fill", color: armed && live ? .orange : .green, isOn: live) { present() }
+                    .help(presentHelp)
+                    .animation(.easeInOut(duration: 0.15), value: armed)
+                ModeButton(title: rehearseTitle, key: rehearsing ? (armed ? "" : "Esc Esc") : "⇧⌘R",
+                           symbol: rehearsing ? "stop.fill" : "person.2.slash", color: armed && rehearsing ? .orange : .teal, isOn: rehearsing) { rehearse() }
+                    .help(rehearseHelp)
+                    .animation(.easeInOut(duration: 0.15), value: armed)
                 ModeButton(title: "Swap", key: "⌘D", symbol: "arrow.left.arrow.right", color: .gray, isOn: false) {
                     _ = model.perform(.swapDisplays)
                 }
@@ -656,10 +710,10 @@ struct StatusBar: View {
                 .help(swapHelp)
             }
             HStack(spacing: 8) {
-                ModeButton(title: "", key: "", symbol: model.isPresenting ? "stop.fill" : "play.fill", color: armed ? .orange : .green, isOn: model.isPresenting) {
-                    if model.isPresenting { model.endPresenting() } else { _ = model.perform(.startPresenting) }
-                }
-                .help(presentHelp)
+                ModeButton(title: "", key: "", symbol: live ? "stop.fill" : "play.fill", color: armed && live ? .orange : .green, isOn: live) { present() }
+                    .help(presentHelp)
+                ModeButton(title: "", key: "", symbol: rehearsing ? "stop.fill" : "person.2.slash", color: armed && rehearsing ? .orange : .teal, isOn: rehearsing) { rehearse() }
+                    .help(rehearseHelp)
                 ModeButton(title: "", key: "", symbol: "arrow.left.arrow.right", color: .gray, isOn: false) {
                     _ = model.perform(.swapDisplays)
                 }
@@ -670,6 +724,14 @@ struct StatusBar: View {
         .padding(.leading, 8)
     }
 
+    private func present() {
+        if model.isLive { model.endPresenting() } else { _ = model.perform(.startPresenting) }
+    }
+
+    private func rehearse() {
+        if model.presentingMode == .rehearsal { model.endPresenting() } else { _ = model.perform(.startRehearsing) }
+    }
+
     static func format(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
@@ -678,7 +740,8 @@ struct StatusBar: View {
 }
 
 /// The popover on the timer: type a countdown ("45", "45:00", "1h30"); Return sets it. The time left is the
-/// countdown minus the talk's elapsed time, so it can be set before or during the talk.
+/// countdown minus the talk's elapsed time, so it can be set before or during the talk. Reset puts the clock back to
+/// zero, running again at once if presenting (feedback round 7).
 struct CountdownEditor: View {
     let model: AppModel
     let presentation: Presentation
@@ -702,12 +765,20 @@ struct CountdownEditor: View {
             if invalid {
                 Text("Enter minutes (45), minutes:seconds (45:00) or hours (1h30).").font(.callout).foregroundStyle(.red)
             }
-            Text("Elapsed so far: \(StatusBar.format(timer.elapsed(at: Date()))). The time left replaces the elapsed time, green until it runs out, then red and counting up.")
+            Text("Elapsed so far: \(StatusBar.format(timer.elapsed(at: Date()))). The time left replaces the elapsed time, green until it runs out, then red and counting up. The clock runs while presenting or rehearsing; T pauses it.")
                 .font(.callout).foregroundStyle(.secondary)
-            if timer.target != nil {
-                Button("Remove countdown, show elapsed time") {
-                    model.setTargetDuration(nil)
+            HStack {
+                Button("Reset clock to zero") {
+                    _ = model.perform(.resetTimer)
                     isPresented = false
+                }
+                .disabled(timer.elapsed(at: Date()) == 0)
+                .help(model.isPresenting ? "Back to zero and running (⌥T)" : "Back to zero (⌥T)")
+                if timer.target != nil {
+                    Button("Remove countdown, show elapsed time") {
+                        model.setTargetDuration(nil)
+                        isPresented = false
+                    }
                 }
             }
         }

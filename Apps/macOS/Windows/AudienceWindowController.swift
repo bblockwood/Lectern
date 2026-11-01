@@ -7,12 +7,13 @@ final class AudienceWindow: NSWindow {
 }
 
 /// The audience window: full-screen and borderless on the audience display at shielding level (menu bar and
-/// Dock stay off it), or a plain resizable window in rehearsal mode (SPEC §6.1).
+/// Dock stay off it), or a plain resizable window when presenting live with one display (SPEC §6.1). Rehearsal
+/// (feedback round 7) shows no audience window at all.
 @MainActor
 final class AudienceWindowController: NSObject, NSWindowDelegate {
     enum Mode: Equatable {
         case fullScreen(screen: NSScreen, display: DisplayInfo)
-        case rehearsal(aspectRatio: CGFloat, near: NSScreen?)
+        case windowed(aspectRatio: CGFloat, near: NSScreen?)
 
         var isFullScreen: Bool {
             if case .fullScreen = self { return true }
@@ -55,9 +56,9 @@ final class AudienceWindowController: NSObject, NSWindowDelegate {
             window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
             window.contentAspectRatio = .zero
             window.setFrame(screen.frame, display: true)
-        case .rehearsal(let aspect, let near):
+        case .windowed(let aspect, let near):
             window.styleMask = [.titled, .resizable, .closable, .miniaturizable]
-            window.title = "Audience (rehearsal)"
+            window.title = "Audience"
             // The self-test runs from a terminal that covers everything; an occluded window gets no display-link ticks.
             window.level = SelfTest.isActive ? .screenSaver : .normal
             window.collectionBehavior = [.managed, .participatesInCycle]
@@ -78,7 +79,7 @@ final class AudienceWindowController: NSObject, NSWindowDelegate {
         window.orderOut(nil)
     }
 
-    // The close button in rehearsal mode hides the window; presenting continues.
+    // The close button of the windowed audience view hides it; presenting continues (Presentation ▸ Audience Window brings it back).
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         hide()
         return false

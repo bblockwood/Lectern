@@ -34,6 +34,7 @@ private func key(_ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.M
         #expect(KeyMap.action(for: key("p")) == .command(.previous))
         #expect(KeyMap.action(for: key("\u{7f}")) == .command(.back))
         #expect(KeyMap.action(for: key("[", modifiers: .command)) == .command(.back))
+        #expect(KeyMap.action(for: key("]", modifiers: .command)) == .command(.forward))
     }
 
     @MainActor @Test func timerAndDisplays() {
@@ -41,7 +42,10 @@ private func key(_ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.M
         #expect(KeyMap.action(for: key("t", modifiers: .option)) == .resetTimer)
         #expect(KeyMap.action(for: key("d", modifiers: [.command])) == .swapDisplays)
         #expect(KeyMap.action(for: key("d", modifiers: [.command, .option])) == nil)   // the system's Dock toggle
-        #expect(KeyMap.action(for: key("p", modifiers: [.command, .option])) == .startPresenting)
+        #expect(KeyMap.action(for: key("p", modifiers: [.command, .shift])) == .startPresenting)   // ⇧⌘P (feedback round 7)
+        #expect(KeyMap.action(for: key("r", modifiers: [.command, .shift])) == .startRehearsing)   // ⇧⌘R
+        #expect(KeyMap.action(for: key("p", modifiers: [.command, .option])) == nil)              // was ⌥⌘P
+        #expect(KeyMap.action(for: key("r", modifiers: [.command])) == nil)                       // ⌘R is the menu's reload
         #expect(KeyMap.action(for: key("f")) == .toggleFreeze)
         #expect(KeyMap.action(for: key("w")) == .toggleAudience(.white))
         #expect(KeyMap.action(for: key("l")) == .togglePointer)

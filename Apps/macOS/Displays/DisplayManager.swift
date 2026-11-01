@@ -55,8 +55,8 @@ enum DisplayRole: String, Codable, Sendable {
 struct DisplayAssignment: Equatable, Sendable {
     var presenter: DisplayInfo? = nil
     var audience: DisplayInfo? = nil
-    /// Single display: the audience view is a resizable window or hidden (SPEC §6.1).
-    var isRehearsal: Bool { audience == nil }
+    /// With one display the live audience view is a resizable window instead (SPEC §6.1).
+    var hasAudienceDisplay: Bool { audience != nil }
 }
 
 /// Pure assignment logic: remembered roles win, otherwise built-in = presenter and the largest other display = audience.
