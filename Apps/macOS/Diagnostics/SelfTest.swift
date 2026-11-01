@@ -116,6 +116,12 @@ final class SelfTest {
             let current = outline.currentEntry(forPage: page)
             print("CONTENTS outline entries \(outline.flattened.count); on page \(page + 1) the current entry is \(current.map { "\"\($0.title)\" (page \(($0.pageIndex ?? -1) + 1))" } ?? "none")")
         }
+        if CommandLine.arguments.contains("-rehearsalstaysput"), let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
+            // With the full-screen-while-presenting setting on and no second display, presenting leaves the window alone.
+            let setting = AppSettings.fullScreenWhilePresenting
+            let stayed = !window.styleMask.contains(.fullScreen)
+            print("REHEARSAL \(setting && stayed ? "OK" : "FAIL"): full-screen-while-presenting setting \(setting ? "on" : "off"); presenting in rehearsal left the window out of full screen \(stayed)")
+        }
         if CommandLine.arguments.contains("-fullscreen"), let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
             window.toggleFullScreen(nil)
             try? await Task.sleep(for: .seconds(2))

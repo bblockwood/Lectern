@@ -16,6 +16,9 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
 final class PresenterWindowController: NSWindowController, NSWindowDelegate {
     private let model: AppModel
     private var hideAfterExitingFullScreen = false
+    private var exitingFullScreen = false
+    /// Full screen was entered for presenting, so ending presenting leaves it again.
+    private var enteredFullScreenForPresenting = false
 
     init(model: AppModel) {
         self.model = model
@@ -50,9 +53,10 @@ final class PresenterWindowController: NSWindowController, NSWindowDelegate {
     /// Hides the window; a full-screen window leaves full screen first and hides when that finishes.
     func hide() {
         guard let window else { return }
+        enteredFullScreenForPresenting = false
         if window.styleMask.contains(.fullScreen) {
             hideAfterExitingFullScreen = true
-            window.toggleFullScreen(nil)
+            if !exitingFullScreen { window.toggleFullScreen(nil) }
         } else {
             window.orderOut(nil)
         }
@@ -60,11 +64,34 @@ final class PresenterWindowController: NSWindowController, NSWindowDelegate {
         window.title = "Lectern"
     }
 
+    /// Presenting on a second display puts the window into full screen (when the setting is on); ending
+    /// presenting leaves full screen again, but only if it was entered this way. Rehearsal (no second display)
+    /// is left alone so the rehearsal audience window stays visible.
+    func presentingChanged(_ presenting: Bool, hasAudienceDisplay: Bool) {
+        guard AppSettings.fullScreenWhilePresenting, let window else { return }
+        let fullScreen = window.styleMask.contains(.fullScreen)
+        if presenting, hasAudienceDisplay, !fullScreen {
+            enteredFullScreenForPresenting = true
+            window.toggleFullScreen(nil)
+        } else if !presenting, enteredFullScreenForPresenting {
+            enteredFullScreenForPresenting = false
+            if fullScreen, !exitingFullScreen { window.toggleFullScreen(nil) }
+        }
+    }
+
+    func windowWillExitFullScreen(_ notification: Notification) {
+        exitingFullScreen = true
+    }
+
     func windowDidExitFullScreen(_ notification: Notification) {
+        exitingFullScreen = false
         guard hideAfterExitingFullScreen else { return }
         hideAfterExitingFullScreen = false
         window?.orderOut(nil)
     }
+
+    /// Full screen left by the user (⌃⌘F, the green button) while presenting: nothing to undo later.
+    func windowDidEnterFullScreen(_ notification: Notification) {}
 
     /// The red button closes the deck (feedback round 1); the window itself stays around, hidden, for the next deck.
     func windowShouldClose(_ sender: NSWindow) -> Bool {

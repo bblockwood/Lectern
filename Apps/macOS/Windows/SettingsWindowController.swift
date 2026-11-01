@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(AppSettings.previousLandsOnFrameStartKey) private var previousLandsOnFrameStart = false
     @AppStorage(AppSettings.notesFontSizeKey) private var notesFontSize = Theme.notesDefault
+    @AppStorage(AppSettings.fullScreenWhilePresentingKey) private var fullScreenWhilePresenting = true
     @AppStorage(AppSettings.opensURILinksKey) private var opensURILinks = false
 
     var body: some View {
@@ -19,6 +20,9 @@ struct SettingsView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Section("Presenter") {
+                Toggle("Go full screen when presenting on a second display, and back when it ends", isOn: $fullScreenWhilePresenting)
+                Text("In rehearsal (one display) the window stays as it is, so the rehearsal audience window remains visible.")
+                    .font(.callout).foregroundStyle(.secondary)
                 Stepper("Notes size: \(Int(notesFontSize)) pt  (⌘+ / ⌘− while presenting)", value: $notesFontSize, in: 10...48, step: 2)
             }
             Section("Links") {
