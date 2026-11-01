@@ -12,6 +12,8 @@ public enum Command: Codable, Hashable, Sendable {
     case goToFrameLabel(String)
     case followLink(LinkID)
     case back
+    /// Returns to the page `back` left (⌘]); the Back / Forward buttons under the slide (feedback round 7).
+    case forward
 
     // Private browsing on the presenter screen (SPEC §6.3).
     case beginBrowse

@@ -45,9 +45,14 @@ public final class SessionController {
         return true
     }
 
-    public func setDisplayConfig(_ config: DisplayConfig) {
+    /// The clock runs only while presenting (SPEC §6.7): presenting starting (live or rehearsal) starts or resumes
+    /// the timer and presenting ending pauses it, so leaving and re-entering keeps the elapsed time.
+    public func setDisplayConfig(_ config: DisplayConfig, now: Date = Date()) {
         var new = state
+        let wasPresenting = new.displayConfig.isPresenting
         new.displayConfig = config
+        if config.isPresenting, !wasPresenting { new.timer.start(at: now) }
+        if !config.isPresenting, wasPresenting { new.timer.pause(at: now) }
         commit(old: state, new: new)
     }
 

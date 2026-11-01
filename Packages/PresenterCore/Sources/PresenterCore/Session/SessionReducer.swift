@@ -20,7 +20,6 @@ public struct SessionReducer: Sendable {
     public func apply(_ command: Command, to state: inout SessionState, now: Date, options: NavigationOptions = NavigationOptions()) {
         switch command {
         case .next:
-            autoStartTimer(&state, now: now)
             step(&state, by: 1)
         case .previous:
             let frame = frames.frame(containing: state.presenterPage)
@@ -30,7 +29,6 @@ public struct SessionReducer: Sendable {
                 step(&state, by: -1)
             }
         case .nextFrame:
-            autoStartTimer(&state, now: now)
             let current = state.presenterPage
             let target = frames.nextFrameFirstPage(after: current) ?? (pageCount - 1)
             setStepTarget(&state, target)
@@ -46,6 +44,8 @@ public struct SessionReducer: Sendable {
             follow(id, &state, now: now)
         case .back:
             goBack(&state)
+        case .forward:
+            goForward(&state)
 
         case .beginBrowse:
             if state.browsePage == nil { state.browsePage = state.committedPage }
@@ -83,12 +83,15 @@ public struct SessionReducer: Sendable {
         case .insertWhiteboard:
             break // M3/M5.
 
+        // The clock runs only while presenting (SPEC §6.7, feedback round 7); the controller starts and pauses it
+        // as presenting starts and ends, T does so by hand in between, and a reset mid-talk restarts it at once.
         case .timerStart:
-            state.timer.start(at: now)
+            if state.displayConfig.isPresenting { state.timer.start(at: now) }
         case .timerPause:
             state.timer.pause(at: now)
         case .timerReset:
             state.timer.reset()
+            if state.displayConfig.isPresenting { state.timer.start(at: now) }
         }
     }
 
@@ -114,20 +117,28 @@ public struct SessionReducer: Sendable {
         }
     }
 
+    /// Entries for the page already shown are spent (the talk stepped back to where the jump came from), so they
+    /// are dropped rather than producing a no-op (feedback round 7).
     private func goBack(_ state: inout SessionState) {
-        guard let previous = state.history.popLast() else { return }
-        state.forwardHistory.append(state.committedPage)
-        state.browsePage = nil
-        state.committedPage = clamp(previous)
-        clearPageScopedState(&state)
+        while let previous = state.history.popLast() {
+            guard clamp(previous) != state.committedPage else { continue }
+            state.forwardHistory.append(state.committedPage)
+            state.browsePage = nil
+            state.committedPage = clamp(previous)
+            clearPageScopedState(&state)
+            return
+        }
     }
 
     private func goForward(_ state: inout SessionState) {
-        guard let next = state.forwardHistory.popLast() else { return }
-        state.history.append(state.committedPage)
-        state.browsePage = nil
-        state.committedPage = clamp(next)
-        clearPageScopedState(&state)
+        while let next = state.forwardHistory.popLast() {
+            guard clamp(next) != state.committedPage else { continue }
+            state.history.append(state.committedPage)
+            state.browsePage = nil
+            state.committedPage = clamp(next)
+            clearPageScopedState(&state)
+            return
+        }
     }
 
     // MARK: - Helpers
@@ -161,10 +172,6 @@ public struct SessionReducer: Sendable {
     private func clearPageScopedState(_ state: inout SessionState) {
         // Ephemeral ink belongs to the page it was drawn on. Persistent ink per page arrives with the sidecar in M3.
         state.ink = InkState()
-    }
-
-    private func autoStartTimer(_ state: inout SessionState, now: Date) {
-        if !state.timer.hasStarted { state.timer.start(at: now) }
     }
 
     private func clamp(_ page: Int) -> Int {

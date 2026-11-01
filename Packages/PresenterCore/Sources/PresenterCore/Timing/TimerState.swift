@@ -1,20 +1,18 @@
 import Foundation
 
-/// Talk timer (SPEC §6.7). Elapsed time starts at the first advance or a manual start.
+/// Talk timer (SPEC §6.7). It runs only while presenting: `SessionController` starts or resumes it when presenting
+/// starts and pauses it when presenting ends; T pauses and resumes it by hand in between (feedback round 7).
 public struct TimerState: Hashable, Sendable {
     /// Seconds accumulated before `runningSince`.
     public var accumulated: TimeInterval = 0
     /// Non-nil while running.
     public var runningSince: Date? = nil
     public var target: TimeInterval? = nil
-    /// False until the first start (manual or automatic); reset clears it. Drives auto-start on the first advance.
-    public private(set) var hasStarted: Bool = false
 
     public init(accumulated: TimeInterval = 0, runningSince: Date? = nil, target: TimeInterval? = nil) {
         self.accumulated = accumulated
         self.runningSince = runningSince
         self.target = target
-        self.hasStarted = accumulated > 0 || runningSince != nil
     }
 
     public var isRunning: Bool { runningSince != nil }
@@ -30,7 +28,6 @@ public struct TimerState: Hashable, Sendable {
     }
 
     public mutating func start(at now: Date) {
-        hasStarted = true
         guard runningSince == nil else { return }
         runningSince = now
     }
@@ -48,7 +45,6 @@ public struct TimerState: Hashable, Sendable {
     public mutating func reset() {
         accumulated = 0
         runningSince = nil
-        hasStarted = false
     }
 }
 
