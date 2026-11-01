@@ -2,7 +2,8 @@ import CoreGraphics
 import Observation
 import PresenterCore
 
-/// Thumbnails for the overview: the last page of each frame (SPEC §4.1) from a small separate cache.
+/// Thumbnails for the overview from a small separate cache (SPEC §3.3), by page: Frames mode shows the last page of
+/// each frame (SPEC §4.1) except the current frame's build on screen; Builds mode shows every page (feedback round 7).
 @MainActor
 @Observable
 final class ThumbnailProvider {
@@ -22,28 +23,27 @@ final class ThumbnailProvider {
         cache = RenderCache(document: document, budgetBytes: 96 << 20)
     }
 
-    private func request(forFrame frame: Int) -> RenderRequest {
-        let page = document.frames.frames[frame].lastPage
-        return SurfaceSpec(role: .preview, bounds: ThumbnailProvider.bounds, crop: crop).request(for: document.pages[page])
+    private func request(forPage page: Int) -> RenderRequest {
+        SurfaceSpec(role: .preview, bounds: ThumbnailProvider.bounds, crop: crop).request(for: document.pages[page])
     }
 
     /// Returns the thumbnail if ready; otherwise starts rendering it and returns nil. Views re-render when `images` changes.
-    func image(forFrame frame: Int) -> CGImage? {
-        guard document.frames.frames.indices.contains(frame) else { return nil }
-        if let image = images[frame] { return image }
-        let request = request(forFrame: frame)
+    func image(forPage page: Int) -> CGImage? {
+        guard document.pages.indices.contains(page) else { return nil }
+        if let image = images[page] { return image }
+        let request = request(forPage: page)
         if let cached = cache.cachedImage(for: request) {
-            images[frame] = cached
+            images[page] = cached
             return cached
         }
-        guard !inFlight.contains(frame) else { return nil }
-        inFlight.insert(frame)
+        guard !inFlight.contains(page) else { return nil }
+        inFlight.insert(page)
         let cache = self.cache
         Task { [weak self] in
             let image = await cache.image(for: request, priority: .prefetch(distance: 0))
             guard let self else { return }
-            self.inFlight.remove(frame)
-            if let image { self.images[frame] = image }
+            self.inFlight.remove(page)
+            if let image { self.images[page] = image }
         }
         return nil
     }
@@ -54,7 +54,8 @@ final class ThumbnailProvider {
         cache.store.setFocusPages([])
     }
 
-    func setFocus(frame: Int) {
-        cache.store.setFocusPages([document.frames.frames[min(max(frame, 0), document.frames.frameCount - 1)].lastPage])
+    /// Eviction keeps the pages near the one on screen.
+    func setFocus(page: Int) {
+        cache.store.setFocusPages([min(max(page, 0), document.pageCount - 1)])
     }
 }

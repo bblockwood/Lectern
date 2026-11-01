@@ -1,8 +1,9 @@
 import AppKit
 import PresenterCore
 
-/// `Lectern -selftest deck.pdf [steps]`: opens the deck, presents in rehearsal mode, drives synthetic key events
-/// through the real input path, and prints latency statistics (SPEC §11 M1 acceptance). Exits when done.
+/// `Lectern -selftest deck.pdf [steps]`: opens the deck, presents live with one display (the audience view in a
+/// window), drives synthetic key events through the real input path, and prints latency statistics (SPEC §11 M1
+/// acceptance). Exits when done.
 @MainActor
 final class SelfTest {
     private let url: URL
@@ -116,11 +117,64 @@ final class SelfTest {
             let current = outline.currentEntry(forPage: page)
             print("CONTENTS outline entries \(outline.flattened.count); on page \(page + 1) the current entry is \(current.map { "\"\($0.title)\" (page \(($0.pageIndex ?? -1) + 1))" } ?? "none")")
         }
-        if CommandLine.arguments.contains("-rehearsalstaysput"), let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
-            // With the full-screen-while-presenting setting on and no second display, presenting leaves the window alone.
+        if CommandLine.arguments.contains("-modes"), let model = (NSApp.delegate as? AppDelegate)?.model,
+           let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
+            // Live with one display: the audience view is a window and the presenter stays out of full screen (full
+            // screen would hide that window). ⇧⌘R switches to rehearsal: no audience window, full screen (setting on),
+            // the clock still running. Esc Esc ends: clock paused and full screen left; → while idle leaves the clock
+            // paused; ⇧⌘P resumes it, live again (feedback round 7).
+            let audienceWindow = NSApp.windows.first { $0 is AudienceWindow }
             let setting = AppSettings.fullScreenWhilePresenting
-            let stayed = !window.styleMask.contains(.fullScreen)
-            print("REHEARSAL \(setting && stayed ? "OK" : "FAIL"): full-screen-while-presenting setting \(setting ? "on" : "off"); presenting in rehearsal left the window out of full screen \(stayed)")
+            let liveWindowed = model.presentingMode == .live && audienceWindow?.isVisible == true && !window.styleMask.contains(.fullScreen)
+            let runningLive = presentation.state.timer.isRunning
+            await press(keyCode: 15, character: "r", modifiers: [.command, .shift])   // ⇧⌘R
+            try? await Task.sleep(for: .seconds(2.5))                                   // the full-screen animation
+            let rehearsing = model.presentingMode == .rehearsal && audienceWindow?.isVisible != true
+            let wentFullScreen = window.styleMask.contains(.fullScreen)
+            let stillRunning = presentation.state.timer.isRunning
+            captureScreenshots(suffix: "-rehearsal")
+            await press(keyCode: 53, character: "\u{1b}")
+            await press(keyCode: 53, character: "\u{1b}")
+            try? await Task.sleep(for: .seconds(2.5))
+            let ended = !model.isPresenting
+            let paused = !presentation.state.timer.isRunning
+            let elapsed = presentation.state.timer.elapsed(at: Date())
+            let leftFullScreen = !window.styleMask.contains(.fullScreen)
+            captureScreenshots(suffix: "-idle")
+            await press(keyCode: 124, character: "\u{F703}")
+            let stillPaused = !presentation.state.timer.isRunning
+            await press(keyCode: 123, character: "\u{F702}")
+            await press(keyCode: 35, character: "p", modifiers: [.command, .shift])   // ⇧⌘P
+            try? await Task.sleep(for: .seconds(1.5))
+            let resumed = model.presentingMode == .live && presentation.state.timer.isRunning && presentation.state.timer.elapsed(at: Date()) >= elapsed
+            // Full-screen transitions never complete while the app cannot become active (lid closed over SSH, say).
+            let fullScreenCheckable = NSApp.isActive
+            let fullScreenOK = !fullScreenCheckable || (wentFullScreen == setting && leftFullScreen)
+            let ok = liveWindowed && runningLive && rehearsing && fullScreenOK && stillRunning && ended && paused && elapsed > 0 && stillPaused && resumed
+            print("MODES \(ok ? "OK" : "FAIL"): live with one display: audience window shown and presenter not full screen \(liveWindowed), clock running \(runningLive); ⇧⌘R: rehearsing with no audience window \(rehearsing), full screen \(wentFullScreen) (setting \(setting ? "on" : "off")\(fullScreenCheckable ? "" : "; NOT CHECKABLE, app inactive")), clock still running \(stillRunning); Esc Esc: ended \(ended), clock paused \(paused) at \(Int(elapsed)) s, full screen left \(leftFullScreen); → while idle left it paused \(stillPaused); ⇧⌘P resumed, live \(resumed)")
+        }
+        if CommandLine.arguments.contains("-back"), let model = (NSApp.delegate as? AppDelegate)?.model {
+            // A jump offers "Back to Frame X" under the slide; builds shown at the target keep it; ⌫ returns and offers
+            // Forward; ⌘] goes on again (feedback round 7).
+            let frames = presentation.document.frames
+            let start = presentation.state.committedPage
+            let startFrame = frames.frame(containing: start)
+            let backBefore = presentation.state.backTarget   // older jumps (the run's own goToPage(0)) stay underneath
+            let target = frames.frames[max(0, frames.frameCount - 2)].firstPage   // leaves room for two steps
+            _ = model.perform(.command(.goToPage(target)))
+            await press(keyCode: 124, character: "\u{F703}")
+            await press(keyCode: 124, character: "\u{F703}")
+            let reached = presentation.state.committedPage
+            let offersBack = presentation.state.backTarget == start && presentation.state.forwardTarget == nil
+            try? await Task.sleep(for: .milliseconds(300))
+            captureScreenshots(suffix: "-back")
+            await press(keyCode: 51, character: "\u{7f}")                           // ⌫
+            let returned = presentation.state.committedPage == start
+            let offersForward = presentation.state.forwardTarget == reached && presentation.state.backTarget == backBefore
+            await press(keyCode: 30, character: "]", modifiers: [.command])          // ⌘]
+            let wentOn = presentation.state.committedPage == reached && presentation.state.backTarget == start && presentation.state.forwardTarget == nil
+            print("BACK \(offersBack && returned && offersForward && wentOn ? "OK" : "FAIL"): from frame \(startFrame.label) (page \(start + 1)) jumped to page \(target + 1), stepped to \(reached + 1): offers Back to frame \(startFrame.label) \(offersBack); ⌫ returned \(returned) and offers Forward to page \(reached + 1) \(offersForward); ⌘] went on again \(wentOn); history \(presentation.state.history), forward \(presentation.state.forwardHistory)")
+            _ = model.perform(.command(.back))
         }
         if CommandLine.arguments.contains("-fullscreen"), let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
             window.toggleFullScreen(nil)
@@ -129,7 +183,7 @@ final class SelfTest {
             window.toggleFullScreen(nil)
             try? await Task.sleep(for: .seconds(2))
             let left = !window.styleMask.contains(.fullScreen)
-            print("FULLSCREEN \(entered && left ? "OK" : "FAIL"): entered \(entered), left again \(left)")
+            print("FULLSCREEN \(entered && left ? "OK" : NSApp.isActive ? "FAIL" : "NOT CHECKABLE (app inactive: lid closed?)"): entered \(entered), left again \(left)")
         }
         if CommandLine.arguments.contains("-closebutton"), let model = (NSApp.delegate as? AppDelegate)?.model,
            let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
@@ -184,7 +238,12 @@ final class SelfTest {
             try? await Task.sleep(for: .seconds(1))                                   // the current pane shrank: new render size
             await press(keyCode: 124, character: "\u{F703}")                        // → is still the next build
             try? await Task.sleep(for: .seconds(1.5))                                 // thumbnails
-            captureScreenshots(suffix: "-overview")
+            captureScreenshots(suffix: "-overview")                                  // Frames: the current frame lists its builds
+            UserDefaults.standard.set(true, forKey: AppSettings.overviewShowsBuildsKey)
+            try? await Task.sleep(for: .seconds(1.5))
+            captureScreenshots(suffix: "-overview-builds")                           // Builds: every page
+            UserDefaults.standard.set(false, forKey: AppSettings.overviewShowsBuildsKey)
+            try? await Task.sleep(for: .milliseconds(500))
             let advanced = presentation.state.committedPage == before + 1 && !presentation.state.isBrowsing
             await press(keyCode: 49, character: " ")                                  // Space too
             let advancedAgain = presentation.state.committedPage == before + 2
@@ -242,6 +301,10 @@ final class SelfTest {
         captureScreenshots(suffix: "-ink")
         try? await Task.sleep(for: .seconds(3.5))
         let kept = presentation.state.ink.strokes.count
+        _ = model.perform(.toggleDraw)            // Draw off: C is inert outside Draw mode (feedback round 7)
+        _ = model.perform(.command(.clearInk))
+        let inertOutsideDraw = presentation.state.ink.strokes.count == 1 && !presentation.drawMode
+        _ = model.perform(.toggleDraw)            // Draw on: C clears and turns the tools off
         _ = model.perform(.command(.clearInk))
         let cleared = presentation.state.ink.strokes.count
         let toolsOff = !presentation.drawMode && !presentation.pointerMode
@@ -253,7 +316,7 @@ final class SelfTest {
         _ = model.perform(.command(.next))
         let afterAdvance = presentation.state.ink.strokes.count
         _ = model.perform(.command(.previous))
-        print("INK persistence \(kept == 1 && cleared == 0 && toolsOff && drawnAgain == 1 && afterAdvance == 0 ? "OK" : "FAIL"): strokes after 3.5 s \(kept) (expected 1), after C \(cleared) with tools off \(toolsOff), drawn again \(drawnAgain), after the next build \(afterAdvance)")
+        print("INK persistence \(kept == 1 && inertOutsideDraw && cleared == 0 && toolsOff && drawnAgain == 1 && afterAdvance == 0 ? "OK" : "FAIL"): strokes after 3.5 s \(kept) (expected 1), C outside Draw left them \(inertOutsideDraw), after C in Draw \(cleared) with tools off \(toolsOff), drawn again \(drawnAgain), after the next build \(afterAdvance)")
         _ = model.perform(.toggleDraw)
     }
 
@@ -493,7 +556,7 @@ final class SelfTest {
         let overTarget = samples.compactMap(\.inputToFrame).filter { $0 > period * 2 }.count
         print(String(format: "display refresh period %.2f ms; samples whose first vsync is later than one refresh after input: %d; whose frame target is later than two: %d", period, overVsync, overTarget))
         let timer = presentation.state.timer
-        print(String(format: "timer: running %@, elapsed %.1f s (auto-started on the first advance)", timer.isRunning ? "yes" : "no", timer.elapsed(at: Date())))
+        print(String(format: "timer: running %@, elapsed %.1f s (runs while presenting)", timer.isRunning ? "yes" : "no", timer.elapsed(at: Date())))
         print("store: \(presentation.cache.store.count) images, \(presentation.cache.store.bytesUsed / 1_048_576) MB of \(presentation.cache.store.budgetBytes / 1_048_576) MB, \(presentation.cache.store.evictions) evictions")
     }
 }

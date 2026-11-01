@@ -14,6 +14,13 @@ private func run(_ commands: [Command], from state: SessionState = SessionState(
     return s
 }
 
+/// A state that is presenting, since the clock only runs then.
+private var presenting: SessionState {
+    var s = SessionState()
+    s.displayConfig.isPresenting = true
+    return s
+}
+
 @Suite struct Stepping {
     @Test func nextAndPreviousMoveOnePageWithoutHistory() {
         let s = run([.next, .next, .previous])
@@ -68,6 +75,40 @@ private func run(_ commands: [Command], from state: SessionState = SessionState(
     @Test func backWithEmptyHistoryIsANoOp() {
         let s = run([.next, .back])
         #expect(s.committedPage == 1)
+    }
+
+    @Test func backAfterSteppingAwayStillReturnsToWhereTheJumpStarted() {
+        // Jump to the appendix, show a few builds there, come back: feedback round 7's main case.
+        var s = run([.next, .goToPage(4), .next, .next])
+        #expect(s.committedPage == 6)
+        #expect(s.backTarget == 1)
+        s = run([.back], from: s)
+        #expect(s.committedPage == 1)
+        #expect(s.forwardTarget == 6, "forward returns to where the talk had got to, not to the jump target")
+        s = run([.forward], from: s)
+        #expect(s.committedPage == 6)
+        #expect(s.history == [1])
+    }
+
+    @Test func backSkipsEntriesForThePageAlreadyShown() {
+        // Jump 0 → 5, then step back by hand to page 0: the entry is spent, so back is not a no-op that eats a press.
+        var s = run([.goToPage(5), .goToPage(6)] + Array(repeating: .previous, count: 6))
+        #expect(s.committedPage == 0)
+        #expect(s.history == [0, 5])
+        #expect(s.backTarget == 5, "the button offers the entry that would actually move")
+        s = run([.back], from: s)
+        #expect(s.committedPage == 5)
+        #expect(s.history == [0], "the entry for page 0 stays until it is spent or used")
+        s = run(Array(repeating: .previous, count: 5) + [.back], from: s)
+        #expect(s.committedPage == 0, "only spent entries remained, so nothing moved")
+        #expect(s.history.isEmpty)
+        #expect(s.backTarget == nil)
+    }
+
+    @Test func forwardWithNothingToGoToIsANoOp() {
+        let s = run([.goToPage(3), .forward])
+        #expect(s.committedPage == 3)
+        #expect(s.forwardTarget == nil)
     }
 
     @Test func historyIsAStack() {
@@ -126,16 +167,21 @@ private func run(_ commands: [Command], from state: SessionState = SessionState(
         #expect(run([.next, .setAudienceMode(.frozen(page: 1)), .next, .setAudienceMode(.live)]).audiencePage == 2)
     }
 
-    @Test func timerAutoStartsOnFirstAdvanceOnly() {
-        #expect(run([.previous]).timer.isRunning == false)
-        #expect(run([.next]).timer.isRunning == true)
-        #expect(run([.nextFrame]).timer.isRunning == true)
-        let paused = run([.next, .timerPause, .next])
+    @Test func advancesNeverStartTheClock() {
+        // Feedback round 7: the clock runs only while presenting, so stepping through a deck beforehand leaves it at zero.
+        #expect(run([.next, .nextFrame, .next]).timer.isRunning == false)
+        #expect(run([.next, .nextFrame], from: presenting).timer.isRunning == false, "presenting starts it via the controller, not an advance")
+        let paused = run([.timerStart, .timerPause, .next], from: presenting)
         #expect(paused.timer.isRunning == false, "an advance after a manual pause must not restart the timer")
     }
 
+    @Test func timerStartIsRefusedOutsidePresenting() {
+        #expect(run([.timerStart]).timer.isRunning == false)
+        #expect(run([.timerStart], from: presenting).timer.isRunning == true)
+    }
+
     @Test func timerStartPauseReset() {
-        var s = SessionState()
+        var s = presenting
         reducer.apply(.timerStart, to: &s, now: t0)
         #expect(s.timer.elapsed(at: t0.addingTimeInterval(30)) == 30)
         reducer.apply(.timerPause, to: &s, now: t0.addingTimeInterval(30))
@@ -143,8 +189,13 @@ private func run(_ commands: [Command], from state: SessionState = SessionState(
         reducer.apply(.timerStart, to: &s, now: t0.addingTimeInterval(100))
         #expect(s.timer.elapsed(at: t0.addingTimeInterval(110)) == 40)
         reducer.apply(.timerReset, to: &s, now: t0.addingTimeInterval(110))
-        #expect(s.timer.elapsed(at: t0.addingTimeInterval(200)) == 0)
-        #expect(!s.timer.hasStarted)
+        #expect(s.timer.elapsed(at: t0.addingTimeInterval(110)) == 0)
+        #expect(s.timer.isRunning, "a reset mid-talk restarts the clock at once")
+        #expect(s.timer.elapsed(at: t0.addingTimeInterval(170)) == 60)
+        s.displayConfig.isPresenting = false
+        reducer.apply(.timerReset, to: &s, now: t0.addingTimeInterval(170))
+        #expect(!s.timer.isRunning, "a reset outside presenting leaves the clock at zero, stopped")
+        #expect(s.timer.elapsed(at: t0.addingTimeInterval(400)) == 0)
     }
 
     @Test func inkIsClearedWhenThePageChanges() {
@@ -175,6 +226,28 @@ private func run(_ commands: [Command], from state: SessionState = SessionState(
         controller.apply(.nextFrame)
         #expect(changes.map { $0.1 } == [1, 4])
         #expect(controller.state.committedPage == 4)
+    }
+
+    @MainActor @Test func presentingStartsTheClockAndEndingPausesIt() throws {
+        // Feedback round 7: leaving presenting pauses, re-entering (live or rehearsal) resumes with the elapsed time kept.
+        let doc = try PresentationDocument.load(url: Fixtures.url("overlays.pdf"))
+        let controller = SessionController(document: doc)
+        var live = DisplayConfig()
+        live.isPresenting = true
+        live.audienceDisplayID = "tv"
+        var rehearsal = DisplayConfig()
+        rehearsal.isPresenting = true
+        controller.setDisplayConfig(live, now: t0)
+        #expect(controller.state.timer.isRunning)
+        controller.setDisplayConfig(live, now: t0.addingTimeInterval(5))   // a display change while presenting: no effect
+        #expect(controller.state.timer.elapsed(at: t0.addingTimeInterval(60)) == 60)
+        controller.setDisplayConfig(DisplayConfig(), now: t0.addingTimeInterval(60))
+        #expect(!controller.state.timer.isRunning)
+        #expect(controller.state.timer.elapsed(at: t0.addingTimeInterval(300)) == 60)
+        controller.apply(.next, now: t0.addingTimeInterval(300))
+        #expect(!controller.state.timer.isRunning, "an advance outside presenting does not start the clock")
+        controller.setDisplayConfig(rehearsal, now: t0.addingTimeInterval(300))
+        #expect(controller.state.timer.elapsed(at: t0.addingTimeInterval(310)) == 70)
     }
 
     @MainActor @Test func replacingTheDocumentRestoresByLabelAndBuild() throws {

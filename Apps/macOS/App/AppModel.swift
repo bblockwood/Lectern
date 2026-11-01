@@ -12,7 +12,10 @@ enum AppAction: Equatable {
     case toggleFreeze
     case toggleTimer
     case resetTimer
+    /// ⇧⌘P, F5: presenting with the audience view (feedback round 7; ⌥⌘P before).
     case startPresenting
+    /// ⇧⌘R: presenting with no audience view, the clock running (feedback round 7).
+    case startRehearsing
     case swapDisplays
     case escape
     /// Tab: overview on/off (SPEC §6.3).
@@ -49,10 +52,18 @@ struct Banner: Identifiable, Equatable {
 @MainActor
 @Observable
 final class AppModel {
+    /// Live shows the audience view: full screen on the audience display, else in a window on this one. Rehearsal
+    /// shows none, anywhere; the clock runs in both (feedback round 7). Esc Esc ends either.
+    enum PresentingMode: Equatable { case live, rehearsal }
+
     private(set) var presentation: Presentation?
-    private(set) var isPresenting = false
+    private(set) var presentingMode: PresentingMode?
+    var isPresenting: Bool { presentingMode != nil }
+    /// There is an audience view, so B / W / F and the FROZEN / BLACK / WHITE pills mean something.
+    var isLive: Bool { presentingMode == .live }
     private(set) var banners: [Banner] = []
-    private(set) var rehearsalAudienceWindowVisible = false
+    /// Live with one display: the audience view is a window here, which Presentation ▸ Audience Window can hide.
+    private(set) var audienceWindowVisible = false
     /// The overview replaces the next-slide and notes column; every key keeps its presenting meaning there, so
     /// the talk can go on with it open (feedback round 6).
     private(set) var overviewVisible = false
@@ -72,8 +83,8 @@ final class AppModel {
     /// The app delegate swaps the chooser and presenter windows on these (feedback round 3).
     @ObservationIgnored var onDeckOpened: ((URL) -> Void)?
     @ObservationIgnored var onDeckClosed: (() -> Void)?
-    /// Presenting started, stopped, or gained an audience display; the delegate drives the window's full screen.
-    @ObservationIgnored var onPresentingChanged: ((_ presenting: Bool, _ hasAudienceDisplay: Bool) -> Void)?
+    /// Presenting started, switched mode, stopped, or gained an audience display; the delegate drives full screen.
+    @ObservationIgnored var onPresentingChanged: ((_ mode: PresentingMode?, _ hasAudienceDisplay: Bool) -> Void)?
     /// Notes font size in points, persisted per device (SPEC §5.2).
     var notesFontSize: Double {
         get { UserDefaults.standard.object(forKey: AppSettings.notesFontSizeKey) as? Double ?? Theme.notesDefault }
@@ -170,7 +181,10 @@ final class AppModel {
     func perform(_ action: AppAction) -> Bool {
         switch action {
         case .startPresenting:
-            if presentation != nil { startPresenting() }
+            if presentation != nil { startPresenting(.live) }
+            return true
+        case .startRehearsing:
+            if presentation != nil { startPresenting(.rehearsal) }
             return true
         case .swapDisplays:
             swapDisplays()
@@ -183,7 +197,10 @@ final class AppModel {
         guard let presentation else { return false }
         switch action {
         case .command(let command):
-            if command == .clearInk { presentation.deactivateTools() }
+            if command == .clearInk {
+                guard presentation.drawMode else { break }   // C belongs to Draw mode (feedback round 7)
+                presentation.deactivateTools()
+            }
             presentation.apply(command)
         case .verticalArrow(let up):
             presentation.apply(up ? .previous : .next)
@@ -228,20 +245,21 @@ final class AppModel {
         case .toggleShortcutCard:
             setShortcutOverlay(visible: !shortcutOverlayVisible)
         case .toggleAudience(let mode):
-            guard isPresenting else { break }   // no audience window, nothing to black out (feedback round 6)
+            guard isLive else { break }   // no audience view, nothing to black out (feedback rounds 6 and 7)
             presentation.apply(.setAudienceMode(presentation.state.audienceMode == mode ? .live : mode))
         case .toggleFreeze:
-            guard isPresenting else { break }
+            guard isLive else { break }
             if case .frozen = presentation.state.audienceMode {
                 presentation.apply(.setAudienceMode(.live))
             } else {
                 presentation.apply(.setAudienceMode(.frozen(page: presentation.state.committedPage)))
             }
         case .toggleTimer:
+            guard isPresenting else { break }   // the clock runs only while presenting (feedback round 7)
             presentation.apply(presentation.state.timer.isRunning ? .timerPause : .timerStart)
         case .resetTimer:
-            presentation.apply(.timerReset)
-        case .startPresenting, .swapDisplays, .escape:
+            presentation.apply(.timerReset)   // restarts at once while presenting, stays at zero otherwise
+        case .startPresenting, .startRehearsing, .swapDisplays, .escape:
             break
         }
         return true
@@ -327,12 +345,12 @@ final class AppModel {
         escapeArmTask = nil
     }
 
-    /// Setting a countdown starts the timer at once if it is not already running (feedback round 3); a deck's
-    /// own duration still waits for the first advance.
+    /// Setting a countdown while presenting starts the clock if T had paused it (feedback round 3). Outside
+    /// presenting the clock stays at zero and the status bar shows the countdown it will run (feedback round 7).
     func setTargetDuration(_ target: TimeInterval?) {
         guard let presentation else { return }
         presentation.setTargetDuration(target)
-        if target != nil, !presentation.state.timer.isRunning { presentation.apply(.timerStart) }
+        if target != nil, isPresenting, !presentation.state.timer.isRunning { presentation.apply(.timerStart) }
     }
 
     func setNotesShowsContents(_ contents: Bool) {
@@ -378,32 +396,54 @@ final class AppModel {
 
     // MARK: - Presenting
 
-    func startPresenting() {
-        guard let presentation, !isPresenting else { return }
-        isPresenting = true
-        power = PowerAssertion(reason: "Lectern is presenting")
-        Latency.shared.primaryRole = .audience
-        configureAudienceWindow(for: presentation)
-        presentation.setPresenting(true, audienceDisplay: displays.assignment.audience?.id, presenterDisplay: displays.assignment.presenter?.id)
-        warnIfMirrored()
-        NSCursor.setHiddenUntilMouseMoves(true)
-        log.notice("presenting started; audience display: \(self.displays.assignment.audience?.name ?? "none (rehearsal)", privacy: .public)")
-        onPresentingChanged?(true, displays.assignment.audience != nil)
+    /// Live: the audience view on the audience display, or in a window with one display.
+    func startPresenting() { startPresenting(.live) }
+    /// Rehearsal: no audience view, the clock running, B / W / F inert.
+    func startRehearsing() { startPresenting(.rehearsal) }
+
+    /// Called while presenting in the other mode, it switches without ending the talk, so the clock keeps running.
+    /// The session controller starts the clock when `isPresenting` turns on and pauses it when it turns off.
+    func startPresenting(_ mode: PresentingMode) {
+        guard let presentation, presentingMode != mode else { return }
+        let switching = presentingMode != nil
+        presentingMode = mode
+        if !switching {
+            power = PowerAssertion(reason: "Lectern is presenting")
+            NSCursor.setHiddenUntilMouseMoves(true)
+        }
+        switch mode {
+        case .live:
+            Latency.shared.primaryRole = .audience
+            configureAudienceWindow(for: presentation)
+            warnIfMirrored()
+        case .rehearsal:
+            if presentation.state.audienceMode != .live { presentation.apply(.setAudienceMode(.live)) }
+            audienceWindow?.hide()
+            audienceWindowVisible = false
+            Latency.shared.primaryRole = .presenterCurrent
+            if let banner = audienceDisplayLostBanner { dismiss(banner); audienceDisplayLostBanner = nil }
+            dismissBanners(action: .openDisplaySettings)
+        }
+        presentation.setPresenting(true, audienceDisplay: mode == .live ? displays.assignment.audience?.id : nil,
+                                   presenterDisplay: displays.assignment.presenter?.id)
+        let audienceName = mode == .live ? (displays.assignment.audience?.name ?? "a window (one display)") : "none (rehearsal)"
+        log.notice("\(switching ? "switched to" : "started", privacy: .public) \(mode == .live ? "live" : "rehearsal", privacy: .public); audience view: \(audienceName, privacy: .public)")
+        onPresentingChanged?(mode, displays.assignment.audience != nil)
     }
 
     func endPresenting() {
         guard isPresenting else { return }
-        isPresenting = false
+        presentingMode = nil
         if let presentation, presentation.state.audienceMode != .live { presentation.apply(.setAudienceMode(.live)) }
         audienceWindow?.hide()
-        rehearsalAudienceWindowVisible = false
+        audienceWindowVisible = false
         power = nil
         disarmEscape()
         Latency.shared.primaryRole = .presenterCurrent
         presentation?.setPresenting(false, audienceDisplay: nil, presenterDisplay: displays.assignment.presenter?.id)
         if let banner = audienceDisplayLostBanner { dismiss(banner); audienceDisplayLostBanner = nil }
         log.notice("presenting ended")
-        onPresentingChanged?(false, displays.assignment.audience != nil)
+        onPresentingChanged?(nil, displays.assignment.audience != nil)
     }
 
     func swapDisplays() {
@@ -411,10 +451,11 @@ final class AppModel {
         // displaysChanged() runs from the manager's onChange.
     }
 
-    func toggleRehearsalAudienceWindow() {
-        guard isPresenting, displays.assignment.audience == nil, let audienceWindow else { return }
-        if rehearsalAudienceWindowVisible { audienceWindow.hide() } else { audienceWindow.show() }
-        rehearsalAudienceWindowVisible.toggle()
+    /// Live with one display: show or hide the audience window (hidden, live looks like rehearsal but B / W / F still work).
+    func toggleAudienceWindow() {
+        guard isLive, displays.assignment.audience == nil, let audienceWindow else { return }
+        if audienceWindowVisible { audienceWindow.hide() } else { audienceWindow.show() }
+        audienceWindowVisible.toggle()
     }
 
     private func configureAudienceWindow(for presentation: Presentation) {
@@ -424,17 +465,17 @@ final class AppModel {
         if let audience = displays.assignment.audience, let screen = displays.screen(for: audience) {
             controller.configure(.fullScreen(screen: screen, display: audience))
             controller.show()
-            rehearsalAudienceWindowVisible = false
+            audienceWindowVisible = false
         } else {
             let aspect = presentation.document.pages.first?.aspectRatio ?? 16.0 / 9.0
-            controller.configure(.rehearsal(aspectRatio: aspect, near: displays.screen(for: displays.assignment.presenter)))
+            controller.configure(.windowed(aspectRatio: aspect, near: displays.screen(for: displays.assignment.presenter)))
             controller.show()
-            rehearsalAudienceWindowVisible = true
+            audienceWindowVisible = true
         }
     }
 
     private func displaysChanged() {
-        guard isPresenting, let presentation else { return }
+        guard isLive, let presentation else { return }   // rehearsal has no audience view to move
         if let audience = displays.assignment.audience {
             if let banner = audienceDisplayLostBanner {
                 dismiss(banner)
@@ -442,7 +483,7 @@ final class AppModel {
                 log.notice("audience display is back: \(audience.name, privacy: .public)")
             }
             configureAudienceWindow(for: presentation)
-            onPresentingChanged?(true, true)   // a display that arrives mid-talk also gets the full-screen treatment
+            onPresentingChanged?(.live, true)   // a display that arrives mid-talk also gets the full-screen treatment
         } else if audienceWindow?.mode?.isFullScreen == true {
             // The audience display went away mid-talk: keep presenting, say so, wait for it to return (SPEC §6.1).
             audienceWindow?.hide()

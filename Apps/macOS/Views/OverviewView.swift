@@ -33,14 +33,22 @@ struct OverviewPanel: View {
     @State private var hits: [SearchHit] = []
     @State private var selectedHit: Int? = nil
     @FocusState private var searchFocused: Bool
+    /// Frames (collapsed, one thumbnail per frame) or Builds (expanded, one per page); feedback round 7.
+    @AppStorage(AppSettings.overviewShowsBuildsKey) private var showsBuilds = false
 
-    private var selectedFrame: Int { presentation.currentFrame.index }
+    private var currentPage: Int { presentation.state.presenterPage }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.paneSpacing) {
-            HStack {
+            HStack(spacing: 12) {
                 PaneTitle("Overview")
                 Spacer()
+                Picker("Overview shows", selection: $showsBuilds) {
+                    Text("Frames").tag(false)
+                    Text("Builds").tag(true)
+                }
+                .pickerStyle(.segmented).labelsHidden().controlSize(.small).frame(width: 150)
+                .help("Frames: one thumbnail per frame (collapsed); the current frame shows the build on screen and lists its builds. Builds: every build as its own thumbnail (expanded).")
                 OverviewToggle(model: model)
             }
             .frame(height: Theme.paneHeader)
@@ -67,7 +75,7 @@ struct OverviewPanel: View {
                 }
                 .frame(maxHeight: 220)
             }
-            FrameGrid(model: model, presentation: presentation, selectedFrame: selectedFrame)
+            FrameGrid(model: model, presentation: presentation, showsBuilds: showsBuilds)
         }
         .task(id: query) {
             let text = query
@@ -82,8 +90,8 @@ struct OverviewPanel: View {
         .onChange(of: model.searchFocusRequest, initial: true) { _, _ in
             if model.searchFocusRequest > 0 { searchFocused = true }
         }
-        .onAppear { presentation.thumbnails.setFocus(frame: selectedFrame) }
-        .onChange(of: selectedFrame) { _, frame in presentation.thumbnails.setFocus(frame: frame) }
+        .onAppear { presentation.thumbnails.setFocus(page: currentPage) }
+        .onChange(of: currentPage) { _, page in presentation.thumbnails.setFocus(page: page) }
     }
 
     private func moveHit(_ delta: Int) {
@@ -146,51 +154,98 @@ struct SearchResults: View {
     }
 }
 
-/// Two columns of frames showing the last page of each (SPEC §4.1), labelled. The current frame is ringed
-/// blue; when the audience sees a different one (frozen), that one is ringed orange, the FROZEN colour. A click
-/// jumps to the frame. Under each: the build count beside the label when there is more than one, an appendix
-/// mark, and a notes icon at the right when the frame has notes.
+/// One cell of the overview grid: a frame in Frames mode (collapsed) or a page in Builds mode (expanded).
+struct OverviewItem: Identifiable, Hashable {
+    /// Frame index in Frames mode, page index in Builds mode; also the scroll anchor.
+    let id: Int
+    let frame: Frame
+    /// The page the thumbnail shows.
+    let page: Int
+}
+
+/// Two columns, labelled. The current item is ringed blue; when the audience sees a different one (frozen), that
+/// one is ringed orange, the FROZEN colour. A click jumps there. Frames mode (collapsed) shows the last page of each
+/// frame, fully built (SPEC §4.1), except the current frame, whose thumbnail follows the build on screen and whose
+/// label lists its builds with the current one lit (feedback round 7). Builds mode (expanded) shows every page.
+/// Under each: the build count or position, an appendix mark, and a notes icon at the right when the frame has notes.
 struct FrameGrid: View {
     let model: AppModel
     let presentation: Presentation
-    let selectedFrame: Int
+    let showsBuilds: Bool
 
     private static let columns = 2
 
+    private var items: [OverviewItem] {
+        let frames = presentation.document.frames
+        if showsBuilds {
+            return (0..<frames.pageCount).map { OverviewItem(id: $0, frame: frames.frame(containing: $0), page: $0) }
+        }
+        let current = presentation.currentFrame.index
+        return frames.frames.map {
+            OverviewItem(id: $0.index, frame: $0, page: $0.index == current ? presentation.state.presenterPage : $0.lastPage)
+        }
+    }
+
+    private var selectedID: Int { showsBuilds ? presentation.state.presenterPage : presentation.currentFrame.index }
+
+    private var audienceID: Int? {
+        presentation.state.audiencePage.map { showsBuilds ? $0 : presentation.document.frames.frame(containing: $0).index }
+    }
+
     var body: some View {
-        let audienceFrame = presentation.state.audiencePage.map { presentation.document.frames.frame(containing: $0).index }
+        let frames = presentation.document.frames
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: FrameGrid.columns), spacing: 12) {
-                    ForEach(presentation.document.frames.frames, id: \.index) { frame in
-                        FrameCell(frame: frame, aspect: presentation.document.pages[frame.lastPage].aspectRatio,
-                                  image: presentation.thumbnails.image(forFrame: frame.index),
-                                  isSelected: frame.index == selectedFrame,
-                                  isAudience: frame.index == audienceFrame && frame.index != selectedFrame,
-                                  isAppendix: presentation.document.isAppendix(page: frame.firstPage),
-                                  hasNotes: frame.pages.contains { presentation.notes.table.note(for: $0, frames: presentation.document.frames) != nil })
-                            .onTapGesture { model.jump(to: frame.firstPage) }
-                            .id(frame.index)
+                    ForEach(items) { item in
+                        FrameCell(item: item, aspect: presentation.document.pages[item.page].aspectRatio,
+                                  image: presentation.thumbnails.image(forPage: item.page),
+                                  isSelected: item.id == selectedID,
+                                  isAudience: item.id == audienceID && item.id != selectedID,
+                                  isAppendix: presentation.document.isAppendix(page: item.frame.firstPage),
+                                  hasNotes: item.frame.pages.contains { presentation.notes.table.note(for: $0, frames: frames) != nil },
+                                  buildShown: showsBuilds ? frames.buildIndex(of: item.page)
+                                      : (item.id == selectedID ? presentation.currentBuild : nil),
+                                  listsBuilds: !showsBuilds && item.id == selectedID,
+                                  jump: { page in model.jump(to: page) })
+                            .onTapGesture { model.jump(to: showsBuilds ? item.page : item.frame.firstPage) }
+                            .id(item.id)
                     }
                 }
                 .padding(.horizontal, 4).padding(.vertical, 8)
             }
-            .onAppear { proxy.scrollTo(selectedFrame, anchor: .center) }
-            .onChange(of: selectedFrame) { _, frame in withAnimation(.easeInOut(duration: 0.1)) { proxy.scrollTo(frame) } }
+            .onAppear { proxy.scrollTo(selectedID, anchor: .center) }
+            .onChange(of: selectedID) { _, id in withAnimation(.easeInOut(duration: 0.1)) { proxy.scrollTo(id) } }
+            .onChange(of: showsBuilds) { _, _ in
+                // The grid's items were just replaced; anchor once they are laid out.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(50))
+                    proxy.scrollTo(selectedID, anchor: .center)
+                }
+            }
         }
     }
 }
 
 struct FrameCell: View {
-    let frame: Frame
+    let item: OverviewItem
     let aspect: CGFloat
     let image: CGImage?
     let isSelected: Bool
     let isAudience: Bool
     let isAppendix: Bool
     let hasNotes: Bool
+    /// The build this cell stands for, when the label should say so (Builds mode, or the current frame in Frames mode).
+    let buildShown: Int?
+    /// Frames mode, the current frame: list every build with `buildShown` lit, each clickable.
+    let listsBuilds: Bool
+    let jump: (Int) -> Void
+
+    /// Beyond this, the current frame's builds are shown as "k/n" rather than one number each.
+    private static let maxListedBuilds = 8
 
     var body: some View {
+        let frame = item.frame
         VStack(spacing: 4) {
             ZStack {
                 Rectangle().fill(Color.white.opacity(0.08))
@@ -201,24 +256,49 @@ struct FrameCell: View {
             .aspectRatio(aspect, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(isSelected ? Color.accentColor : (isAudience ? .orange : .clear), lineWidth: isSelected ? 6 : 4))
-            HStack(spacing: 6) {
+            // Everything on the text baseline, so the build count sits level with the frame number (feedback round 7).
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(frame.label).font(.system(size: Theme.small, weight: .semibold))
                 if frame.buildCount > 1 {
-                    Label("\(frame.buildCount)", systemImage: "rectangle.stack")
-                        .font(.system(size: Theme.small - 2)).foregroundStyle(.secondary)
-                        .help("\(frame.buildCount) builds")
-                        .accessibilityLabel("\(frame.buildCount) builds")
+                    if listsBuilds, let buildShown, frame.buildCount <= FrameCell.maxListedBuilds {
+                        buildList(frame: frame, current: buildShown)
+                    } else {
+                        Label(buildShown.map { "\($0 + 1)/\(frame.buildCount)" } ?? "\(frame.buildCount)", systemImage: "rectangle.stack")
+                            .font(.system(size: Theme.small)).monospacedDigit().foregroundStyle(.secondary)
+                            .help(buildShown.map { "Build \($0 + 1) of \(frame.buildCount)" } ?? "\(frame.buildCount) builds")
+                            .accessibilityLabel(buildShown.map { "Build \($0 + 1) of \(frame.buildCount)" } ?? "\(frame.buildCount) builds")
+                    }
                 }
-                if isAppendix { Text("A").font(.system(size: Theme.small - 2, weight: .heavy)).foregroundStyle(.purple) }
+                if isAppendix { Text("A").font(.system(size: Theme.small, weight: .heavy)).foregroundStyle(.purple) }
                 Spacer(minLength: 0)
                 if hasNotes {
-                    Image(systemName: "note.text")
-                        .font(.system(size: Theme.small - 2)).foregroundStyle(.secondary)
+                    Text(Image(systemName: "note.text"))
+                        .font(.system(size: Theme.small)).foregroundStyle(.secondary)
                         .help("Has notes")
                         .accessibilityLabel("Has notes")
                 }
             }
         }
         .contentShape(Rectangle())
+    }
+
+    /// "1 2 3" with the build on screen lit: the talk is inside this frame's build progression. Each number jumps.
+    private func buildList(frame: Frame, current: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 1) {
+            ForEach(0..<frame.buildCount, id: \.self) { build in
+                let lit = build == current
+                Text("\(build + 1)")
+                    .font(.system(size: Theme.small, weight: lit ? .bold : .regular)).monospacedDigit()
+                    .foregroundStyle(lit ? Color.white : Color.secondary)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(lit ? Color.accentColor : .clear, in: RoundedRectangle(cornerRadius: 3))
+                    .contentShape(Rectangle())
+                    .onTapGesture { jump(frame.firstPage + build) }
+                    .accessibilityLabel("Build \(build + 1)\(lit ? ", on screen" : "")")
+            }
+        }
+        .padding(2)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))   // one group beside the frame number
+        .help("Builds of frame \(frame.label); build \(current + 1) is on screen. Click one to show it.")
     }
 }

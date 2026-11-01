@@ -72,7 +72,7 @@ Every input is translated into a `Command` and sent to one `SessionController`, 
 - `displayConfig`.
 
 Initial `Command` set:
-- Navigation: `next`, `previous`, `nextFrame`, `previousFrame`, `goToPage(i)`, `goToFrameLabel(s)`, `followLink(id)`, `back`.
+- Navigation: `next`, `previous`, `nextFrame`, `previousFrame`, `goToPage(i)`, `goToFrameLabel(s)`, `followLink(id)`, `back`, `forward`.
 - Browsing: `beginBrowse`, `browseTo(i)`, `commitBrowse`, `cancelBrowse`.
 - Audience: `setAudienceMode`.
 - Pointer: `pointerMove(pt)`, `pointerHide`.
@@ -83,7 +83,7 @@ Semantics:
 - `next` and `previous` move one page (one build).
 - `nextFrame` goes to the first page of the next frame.
 - `previousFrame` goes to the **last** page of the previous frame, so it is fully built. This matches pdfpc behavior.
-- Any jump that is not a step pushes the current page onto `history`. That includes link follows, jump-by-number and committed browses. `back` pops.
+- Any jump that is not a step pushes the current page onto `history`. That includes link follows, jump-by-number and committed browses. `back` pops, skipping entries for the page already shown (stepping back by hand spends them), and `forward` returns to the page `back` left. Steps never touch either stack, so showing a few builds at a jump's target still returns to where the jump started (Ben, 2026-11-01).
 
 ### 3.3 Rendering
 
@@ -192,10 +192,10 @@ Read all of these and merge them per page. Earlier sources take priority.
   - Presenter: exists only while a deck is open; fills the visible area of the chooser's screen when a deck opens, whatever the chooser's size. Its title bar is AppKit's own, with the deck's name and proxy icon laid out as the system does (leading on macOS 26).
   - Audience: borderless and full-screen on the target display. The cursor is hidden unless pointer mode is on or the mouse is actively over it.
 - **Auto-assignment:** the built-in display is the presenter and the largest external display is the audience. Remember choices per display (name plus resolution). Provide a swap shortcut.
-- **Single display:** rehearsal mode. The audience view becomes a resizable window, or can be hidden.
+- **Modes (Ben, 2026-11-01):** Present (⇧⌘P, F5) shows the audience view: full screen on the audience display, or with a single display in a resizable window on the presenter's screen (Presentation ▸ Audience Window hides and shows it). Rehearse (⇧⌘R) shows no audience view on any display; the clock runs as in Present and B / W / F are inert. The two status-bar buttons switch between the modes without ending the talk; Esc Esc ends either.
 - **Mirrored displays:** detect mirroring and warn that notes would be visible. Offer a button that opens Displays settings.
 - **Hot-plug:** if the audience display disappears mid-talk, keep presenting and show a banner. When it returns, restore the audience window at the current page.
-- **While presenting:** hold a power assertion that prevents display sleep, and keep the menu bar and Dock off the audience display. Prompt once about enabling a Focus. On the Mac, presenting on a second display also puts the presenter window into full screen and ending presenting leaves it again; a Settings checkbox turns this off (Ben, 2026-10-28). Rehearsal is left alone so the rehearsal audience window stays visible.
+- **While presenting:** hold a power assertion that prevents display sleep, and keep the menu bar and Dock off the audience display. Prompt once about enabling a Focus. On the Mac, presenting or rehearsing also puts the presenter window into full screen and ending leaves it again; a Settings checkbox turns this off (Ben, 2026-10-28). The exception is Present with a single display, whose audience window full screen would hide (2026-11-01). Full screen entered by hand is left alone.
 
 ### 6.2 Presenter layout
 
@@ -203,10 +203,11 @@ Read all of these and merge them per page. Earlier sources take priority.
   - Current slide: large, on the left.
   - Next page preview: top right.
   - Notes: bottom right.
+- **Under the current slide:** Laser and Draw buttons, with Clear beside them only in Draw mode; at the right, after a jump, "Back to Frame X", and after a Back, "Forward to Frame Y" (Ben, 2026-11-01). No hint text otherwise.
 - **Status bar:**
   - Frame label and total, build x/y.
-  - The timer: elapsed time, or, once a countdown is set (pdfpc duration, sidecar, or by clicking the timer), the time left in its place: green while positive, red and counting up once exhausted (feedback round 2). The wall clock beside it.
-  - A Present button (⌥⌘P) whose lit state is the presenting indicator: "Live" with an audience display, "Rehearsal" without; clicking it ends presenting. A Swap displays button (⌘D) beside it. FROZEN / BLACK / WHITE appear as an orange or red pill only in those modes (Ben, 2026-10-27).
+  - The clock: elapsed time, or, once a countdown is set (pdfpc duration, sidecar, or by clicking the timer), the time left in its place: green while positive, red and counting up once exhausted (feedback round 2). It runs only while presenting (§6.7): idle it shows 00:00 or the countdown with an arrow for the direction it will run, and paused mid-talk the pause mark (Ben, 2026-11-01). Clicking it opens the countdown editor, which also offers Reset. The wall clock beside it.
+  - Present (⇧⌘P) and Rehearse (⇧⌘R) buttons: the lit one is the mode indicator, green "Live" or teal "Rehearsing"; clicking the lit one ends, clicking the other switches mode (Ben, 2026-11-01). A Swap displays button (⌘D) beside them. FROZEN / BLACK / WHITE appear as an orange or red pill only in those modes, and only when live (Ben, 2026-10-27).
 - Panes are resizable and the layout persists. Dark UI by default.
 
 ### 6.3 Overview and jumping
@@ -214,6 +215,7 @@ Read all of these and merge them per page. Earlier sources take priority.
 - The overview opens with Tab or the Overview button at the top right of the right column, which stays lit while in it. On the Mac it keeps the current slide exactly where the presenter layout puts it and replaces the next-slide and notes column with a search field and a two-column grid of frames (Ben, 2026-10-27; section dividers were tried and dropped, since decks with one frame per section left half the grid empty). Every key keeps its presenting meaning, so the talk can go on with the overview open: → and Space advance, digits jump, and the grid follows. The current frame is ringed blue; when frozen, the frame the audience sees is ringed orange, the FROZEN colour.
 - On the Mac (Ben, 2026-10-27): a click on a frame, an outline entry or a search hit jumps there at once and pushes history; the audience follows immediately and the overview stays open. Tab or Esc closes the overview. Under each frame: the build count beside the label when there is more than one, an appendix mark, and a notes icon at the right when the frame has notes.
 - Jump by number: typing digits then Return, from anywhere, goes to the frame with that label and pushes history. Return with no digits typed means `next`.
+- Frames / Builds toggle at the top of the overview (Ben, 2026-11-01). Frames (collapsed) shows one thumbnail per frame, the last page fully built, except the current frame, whose thumbnail follows the build on screen and whose label lists its builds with the current one lit, each clickable. Builds (expanded) shows every page with its build position. The choice persists.
 
 ### 6.4 Pointer
 
@@ -231,19 +233,20 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 | Next build | → ↓ Space Page Down Return N |
 | Previous build | ← ↑ Page Up P |
 | Next / previous frame | ⇧→ / ⇧← |
-| Back (return from jump) | Delete, ⌘[ |
+| Back / forward across jumps | Delete or ⌘[ / ⌘] (also the buttons under the slide) |
 | Overview | Tab |
 | Jump to frame | digits + Return |
 | Black / white screen | B or `.` / W (only while presenting; ending presenting returns the audience to live) |
 | Freeze audience | F (only while presenting) |
 | Laser pointer | L |
-| Draw / clear drawing | D / C (C also turns Laser and Draw off) |
+| Draw / clear drawing | D / C (C only in Draw mode; it also turns the tools off) |
 | Next build (also) | click on the current or next slide |
 | Full screen | ⌃⌘F |
 | Keyboard-shortcut card | ⌘/ or ? toggles it (Help ▸ Keyboard Shortcuts); any key, a click outside or going to the background closes it (the key still does its job, except Esc); its rows are clickable. (A hold-⌘ trigger was tried and dropped: apps never see ⌘-Tab, so the card popped up over the app switcher.) |
-| Timer start-pause / reset | T / ⌥T |
+| Clock pause-resume / reset | T (only while presenting) / ⌥T |
 | Swap displays | ⌘D (⌥⌘D is the system's Dock toggle) |
-| Start presenting | ⌥⌘P, F5 |
+| Present (audience view on) | ⇧⌘P, F5 (⌥⌘P until 2026-11-01) |
+| Rehearse (no audience view) | ⇧⌘R |
 | End presenting | Esc twice within 1 s (a single Esc first clears typed digits, then turns Laser / Draw off, then closes the overview). After the first Esc the Present button turns orange and reads "Esc again to end" for a second; no banner. |
 
 ### 6.6 Live reload
@@ -258,7 +261,7 @@ Clickers generally send Page Up/Down, B or `.`, and F5/Esc. All of those must wo
 
 ### 6.7 Timer and pacing
 
-- Elapsed time starts at the first advance or at a manual start. Setting a countdown by hand starts it at once (feedback round 3); a deck's own duration still waits for the first advance.
+- The clock runs only while presenting (Ben, 2026-11-01): Present or Rehearse starts it, or resumes it with the elapsed time kept; ending presenting pauses it; T pauses and resumes it by hand in between; ⌥T, or Reset in the countdown editor, puts it back to zero, running again at once if presenting. Setting a countdown while presenting starts the clock if T had paused it (feedback round 3); outside presenting it only sets what the status bar shows.
 - The target duration comes from pdfpc metadata, the sidecar, or the UI.
 - The time left is green while positive and red, counting up, once exhausted (feedback round 2). The frames-vs-time pace indicator (amber when behind) is not shown for now.
 - Section targets come in M6.

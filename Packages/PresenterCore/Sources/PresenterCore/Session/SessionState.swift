@@ -65,6 +65,10 @@ public struct SessionState: Hashable, Sendable {
 
     /// The page the presenter's current-slide pane shows.
     public var presenterPage: Int { browsePage ?? committedPage }
+    /// Where `back` would go: the latest history entry that is not the page already shown (feedback round 7).
+    public var backTarget: Int? { history.last(where: { $0 != committedPage }) }
+    /// Where `forward` would go.
+    public var forwardTarget: Int? { forwardHistory.last(where: { $0 != committedPage }) }
     public var isBrowsing: Bool { browsePage != nil }
 
     /// The page the audience surface shows, or nil for black/white.

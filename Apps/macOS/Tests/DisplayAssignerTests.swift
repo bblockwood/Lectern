@@ -7,11 +7,11 @@ private let projector = DisplayInfo(id: "Projector@1920x1080", name: "Projector"
 private let monitor = DisplayInfo(id: "Studio@5120x2880", name: "Studio", pixelSize: PixelSize(width: 5120, height: 2880), isBuiltin: false)
 
 @Suite struct DisplayAssignment_ {
-    @Test func singleDisplayIsRehearsal() {
+    @Test func singleDisplayHasNoAudienceDisplay() {
         let a = DisplayAssigner.assign(displays: [builtin], remembered: [:])
         #expect(a.presenter == builtin)
         #expect(a.audience == nil)
-        #expect(a.isRehearsal)
+        #expect(!a.hasAudienceDisplay)
     }
 
     @Test func builtinPresentsAndLargestExternalIsAudience() {

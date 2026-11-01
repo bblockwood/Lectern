@@ -25,8 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         presenterWindow = PresenterWindowController(model: model)
         model.onDeckOpened = { [weak self] url in self?.showPresenter(deck: url) }
         model.onDeckClosed = { [weak self] in self?.showWelcome() }
-        model.onPresentingChanged = { [weak self] presenting, hasAudienceDisplay in
-            self?.presenterWindow.presentingChanged(presenting, hasAudienceDisplay: hasAudienceDisplay)
+        model.onPresentingChanged = { [weak self] mode, hasAudienceDisplay in
+            self?.presenterWindow.presentingChanged(mode, hasAudienceDisplay: hasAudienceDisplay)
         }
         welcomeWindow.show()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
@@ -104,14 +104,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.close()
     }
     @objc func startPresenting(_ sender: Any?) { model.startPresenting() }
+    @objc func startRehearsing(_ sender: Any?) { model.startRehearsing() }
     @objc func endPresenting(_ sender: Any?) { model.endPresenting() }
     @objc func swapDisplays(_ sender: Any?) { model.swapDisplays() }
-    @objc func toggleRehearsalAudienceWindow(_ sender: Any?) { model.toggleRehearsalAudienceWindow() }
+    @objc func toggleAudienceWindow(_ sender: Any?) { model.toggleAudienceWindow() }
     @objc func nextBuild(_ sender: Any?) { _ = model.perform(.command(.next)) }
     @objc func previousBuild(_ sender: Any?) { _ = model.perform(.command(.previous)) }
     @objc func nextFrame(_ sender: Any?) { _ = model.perform(.command(.nextFrame)) }
     @objc func previousFrame(_ sender: Any?) { _ = model.perform(.command(.previousFrame)) }
     @objc func goBack(_ sender: Any?) { _ = model.perform(.command(.back)) }
+    @objc func goForward(_ sender: Any?) { _ = model.perform(.command(.forward)) }
     @objc func toggleBlack(_ sender: Any?) { _ = model.perform(.toggleAudience(.black)) }
     @objc func toggleWhite(_ sender: Any?) { _ = model.perform(.toggleAudience(.white)) }
     @objc func toggleFreeze(_ sender: Any?) { _ = model.perform(.toggleFreeze) }
@@ -163,12 +165,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
-        case #selector(startPresenting(_:)): return model.presentation != nil && !model.isPresenting
+        case #selector(startPresenting(_:)):
+            item.state = model.isLive ? .on : .off
+            return model.presentation != nil && !model.isLive   // from rehearsal it switches
+        case #selector(startRehearsing(_:)):
+            item.state = model.presentingMode == .rehearsal ? .on : .off
+            return model.presentation != nil && model.presentingMode != .rehearsal
         case #selector(endPresenting(_:)): return model.isPresenting
         case #selector(swapDisplays(_:)): return model.displays.assignment.audience != nil
-        case #selector(toggleRehearsalAudienceWindow(_:)):
-            item.state = model.rehearsalAudienceWindowVisible ? .on : .off
-            return model.isPresenting && model.displays.assignment.audience == nil
+        case #selector(toggleAudienceWindow(_:)):
+            item.state = model.audienceWindowVisible ? .on : .off
+            return model.isLive && model.displays.assignment.audience == nil
         case #selector(togglePointer(_:)):
             item.state = model.presentation?.pointerMode == true ? .on : .off
             return model.presentation != nil
@@ -182,10 +189,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let otherWindowIsKey = NSApp.keyWindow.map { !($0 is PresenterWindow) } ?? false
             return model.presentation != nil || otherWindowIsKey
         case #selector(toggleBlack(_:)), #selector(toggleWhite(_:)), #selector(toggleFreeze(_:)):
-            return model.isPresenting   // audience modes mean nothing without an audience window
+            return model.isLive   // audience modes mean nothing without an audience view
+        case #selector(toggleTimer(_:)):
+            return model.isPresenting   // the clock runs only while presenting (feedback round 7)
+        case #selector(clearInk(_:)):
+            return model.presentation?.drawMode == true   // C belongs to Draw mode (feedback round 7)
+        case #selector(goBack(_:)): return model.presentation?.state.backTarget != nil
+        case #selector(goForward(_:)): return model.presentation?.state.forwardTarget != nil
         case #selector(nextBuild(_:)), #selector(previousBuild(_:)), #selector(nextFrame(_:)),
-             #selector(previousFrame(_:)), #selector(goBack(_:)), #selector(toggleTimer(_:)), #selector(resetTimer(_:)),
-             #selector(clearInk(_:)), #selector(notesLarger(_:)), #selector(notesSmaller(_:)), #selector(reloadDeck(_:)):
+             #selector(previousFrame(_:)), #selector(resetTimer(_:)),
+             #selector(notesLarger(_:)), #selector(notesSmaller(_:)), #selector(reloadDeck(_:)):
             return model.presentation != nil
         case #selector(setTargetDuration(_:)):
             if let minutes = item.representedObject as? Int {

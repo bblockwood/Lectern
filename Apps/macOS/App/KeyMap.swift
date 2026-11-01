@@ -34,17 +34,20 @@ enum KeyMap {
         if key == "\u{1b}" { return .escape }
         if key == "\t" { return .toggleOverview }
         if key == "\r" || key == "\u{3}" { return .returnKey }
-        if command && option {
+        if command && shift {
             switch key {
-            case "p": return .startPresenting
-            default: return nil
+            case "p": return .startPresenting   // ⇧⌘P (feedback round 7; ⌥⌘P before)
+            case "r": return .startRehearsing   // ⇧⌘R
+            default: break
             }
         }
+        if command && option { return nil }   // ⌥⌘D is the system's Dock toggle; nothing else of ours lives here
         if command {
             switch key {
-            case "d": return .swapDisplays   // ⌘D; ⌥⌘D is the system's Dock toggle (feedback round 4)
+            case "d": return .swapDisplays   // ⌘D (feedback round 4)
             case "/": return .toggleShortcutCard
             case "[": return .command(.back)
+            case "]": return .command(.forward)
             case "f": return .focusSearch
             case "=", "+": return .notesFontLarger
             case "-": return .notesFontSmaller

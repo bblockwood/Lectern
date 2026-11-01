@@ -20,8 +20,8 @@ struct SettingsView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Section("Presenter") {
-                Toggle("Go full screen when presenting on a second display, and back when it ends", isOn: $fullScreenWhilePresenting)
-                Text("In rehearsal (one display) the window stays as it is, so the rehearsal audience window remains visible.")
+                Toggle("Go full screen while presenting or rehearsing, and back when it ends", isOn: $fullScreenWhilePresenting)
+                Text("Not when presenting with one display: the audience view is a window here, which full screen would hide.")
                     .font(.callout).foregroundStyle(.secondary)
                 Stepper("Notes size: \(Int(notesFontSize)) pt  (⌘+ / ⌘− while presenting)", value: $notesFontSize, in: 10...48, step: 2)
             }

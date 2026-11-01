@@ -44,7 +44,7 @@ struct WelcomeView: View {
                         .padding()
                         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
                     }
-                    Text("→ / Space / click next build · ← previous · ⇧→ next frame · ⌥⌘P present · ? for every shortcut")
+                    Text("→ / Space / click next build · ← previous · ⇧→ next frame · ⇧⌘P present · ⇧⌘R rehearse · ? for every shortcut")
                         .font(.system(size: Theme.small)).foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
                 }
