@@ -195,7 +195,7 @@ Read all of these and merge them per page. Earlier sources take priority.
 - **Single display:** rehearsal mode. The audience view becomes a resizable window, or can be hidden.
 - **Mirrored displays:** detect mirroring and warn that notes would be visible. Offer a button that opens Displays settings.
 - **Hot-plug:** if the audience display disappears mid-talk, keep presenting and show a banner. When it returns, restore the audience window at the current page.
-- **While presenting:** hold a power assertion that prevents display sleep, and keep the menu bar and Dock off the audience display. Prompt once about enabling a Focus.
+- **While presenting:** hold a power assertion that prevents display sleep, and keep the menu bar and Dock off the audience display. Prompt once about enabling a Focus. On the Mac, presenting on a second display also puts the presenter window into full screen and ending presenting leaves it again; a Settings checkbox turns this off (Ben, 2026-10-28). Rehearsal is left alone so the rehearsal audience window stays visible.
 
 ### 6.2 Presenter layout
 

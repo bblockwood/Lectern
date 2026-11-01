@@ -72,6 +72,8 @@ final class AppModel {
     /// The app delegate swaps the chooser and presenter windows on these (feedback round 3).
     @ObservationIgnored var onDeckOpened: ((URL) -> Void)?
     @ObservationIgnored var onDeckClosed: (() -> Void)?
+    /// Presenting started, stopped, or gained an audience display; the delegate drives the window's full screen.
+    @ObservationIgnored var onPresentingChanged: ((_ presenting: Bool, _ hasAudienceDisplay: Bool) -> Void)?
     /// Notes font size in points, persisted per device (SPEC §5.2).
     var notesFontSize: Double {
         get { UserDefaults.standard.object(forKey: AppSettings.notesFontSizeKey) as? Double ?? Theme.notesDefault }
@@ -386,6 +388,7 @@ final class AppModel {
         warnIfMirrored()
         NSCursor.setHiddenUntilMouseMoves(true)
         log.notice("presenting started; audience display: \(self.displays.assignment.audience?.name ?? "none (rehearsal)", privacy: .public)")
+        onPresentingChanged?(true, displays.assignment.audience != nil)
     }
 
     func endPresenting() {
@@ -400,6 +403,7 @@ final class AppModel {
         presentation?.setPresenting(false, audienceDisplay: nil, presenterDisplay: displays.assignment.presenter?.id)
         if let banner = audienceDisplayLostBanner { dismiss(banner); audienceDisplayLostBanner = nil }
         log.notice("presenting ended")
+        onPresentingChanged?(false, displays.assignment.audience != nil)
     }
 
     func swapDisplays() {
@@ -438,6 +442,7 @@ final class AppModel {
                 log.notice("audience display is back: \(audience.name, privacy: .public)")
             }
             configureAudienceWindow(for: presentation)
+            onPresentingChanged?(true, true)   // a display that arrives mid-talk also gets the full-screen treatment
         } else if audienceWindow?.mode?.isFullScreen == true {
             // The audience display went away mid-talk: keep presenting, say so, wait for it to return (SPEC §6.1).
             audienceWindow?.hide()
