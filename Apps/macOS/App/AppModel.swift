@@ -80,6 +80,8 @@ final class AppModel {
     /// The notes pane shows the contents instead of notes. Chosen once when a deck opens (contents if the first
     /// slide has no notes), then only by the user (feedback round 3).
     private(set) var notesShowsContents = false
+    /// The ⓘ popover open beside a pane heading, if any (feedback round 9). Model state so the self-test can open and close it.
+    private(set) var paneInfoShown: PaneInfo?
     /// The app delegate swaps the chooser and presenter windows on these (feedback round 3).
     @ObservationIgnored var onDeckOpened: ((URL) -> Void)?
     @ObservationIgnored var onDeckClosed: (() -> Void)?
@@ -302,9 +304,13 @@ final class AppModel {
         }
     }
 
-    /// Esc: clears typed digits, then turns Laser / Draw off, then closes the overview; twice within a second
-    /// ends presenting.
+    /// Esc: closes an open ⓘ popover, then clears typed digits, then turns Laser / Draw off, then closes the
+    /// overview; twice within a second ends presenting.
     private func handleEscape() -> Bool {
+        if paneInfoShown != nil {
+            showPaneInfo(nil)
+            return true
+        }
         if !jumpBuffer.isEmpty {
             jumpBuffer = ""
             jumpBufferTimeout?.cancel()
@@ -355,6 +361,13 @@ final class AppModel {
 
     func setNotesShowsContents(_ contents: Bool) {
         notesShowsContents = contents
+    }
+
+    enum PaneInfo: String { case notes, contents }
+
+    func showPaneInfo(_ pane: PaneInfo?) {
+        guard pane != paneInfoShown else { return }
+        paneInfoShown = pane
     }
 
     func requestCountdownEditor() {

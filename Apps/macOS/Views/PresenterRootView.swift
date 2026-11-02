@@ -306,16 +306,18 @@ struct PaneTitle: View {
 }
 
 /// A clickable pane heading: the active one is bright with an underline (Notes / Contents, feedback round 2).
+/// Disabled, it stays in place but dim: the Contents tab of a deck without an outline (feedback round 9).
 struct PaneTab: View {
     let text: String
     let active: Bool
+    var enabled = true
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(text)
                 .font(.system(size: Theme.paneTitle, weight: .medium))
-                .foregroundStyle(active ? Color.primary : Color.secondary)
+                .foregroundStyle(active ? Color.primary : Color.secondary.opacity(enabled ? 1 : 0.45))
                 .padding(.horizontal, 2)
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(active ? Color.accentColor : .clear).frame(height: 2).offset(y: 5)
@@ -323,6 +325,7 @@ struct PaneTab: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
         .accessibilityAddTraits(active ? .isSelected : [])
     }
 }
@@ -331,7 +334,9 @@ struct PaneTab: View {
 /// half of a second-screen deck. The pane doubles as the table of contents (feedback rounds 2 and 3): the
 /// Contents heading switches to the PDF outline with the current part highlighted. Which one shows is decided
 /// once when the deck opens and then only by the user. The inline editor is gone for now (feedback round 6):
-/// notes that come from a LaTeX workflow looked editable but were not saved back.
+/// notes that come from a LaTeX workflow looked editable but were not saved back. An ⓘ after each heading opens a
+/// popover saying where that pane's content comes from, and the Contents tab stays in place, dim, when the deck
+/// has no outline, so the explanation is there for whoever needs it (feedback round 9).
 struct NotesPane: View {
     let model: AppModel
     let presentation: Presentation
@@ -343,9 +348,16 @@ struct NotesPane: View {
         let contentsShown = !outline.isEmpty && model.notesShowsContents
         VStack(alignment: .leading, spacing: Theme.paneSpacing) {
             HStack(spacing: 14) {
-                PaneTab(text: "Notes", active: !contentsShown) { model.setNotesShowsContents(false) }
-                if !outline.isEmpty {
-                    PaneTab(text: "Contents", active: contentsShown) { model.setNotesShowsContents(true) }
+                HStack(spacing: 5) {
+                    PaneTab(text: "Notes", active: !contentsShown) { model.setNotesShowsContents(false) }
+                    PaneInfoButton(model: model, pane: .notes, help: "Where speaker notes come from") { NotesSourcesInfo() }
+                }
+                HStack(spacing: 5) {
+                    PaneTab(text: "Contents", active: contentsShown, enabled: !outline.isEmpty) { model.setNotesShowsContents(true) }
+                        .help(outline.isEmpty ? "This PDF has no outline" : "The PDF's outline; click an entry to jump there")
+                    PaneInfoButton(model: model, pane: .contents, help: "Where the table of contents comes from") {
+                        ContentsSourcesInfo(hasOutline: !outline.isEmpty)
+                    }
                 }
                 Spacer()
                 if !contentsShown, let source = note?.source {
@@ -378,6 +390,98 @@ struct NotesPane: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .id(model.notesFontTick)
+    }
+}
+
+/// The ⓘ after a pane heading (feedback round 9): a popover below the heading saying where that pane's content
+/// comes from, for someone who opens a deck and finds the pane empty. Which popover is open lives in the model, so
+/// the self-test can open and close it.
+struct PaneInfoButton<Content: View>: View {
+    let model: AppModel
+    let pane: AppModel.PaneInfo
+    let help: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        let shown = model.paneInfoShown == pane
+        Button { model.showPaneInfo(shown ? nil : pane) } label: {
+            Image(systemName: "info.circle")
+                .font(.system(size: Theme.small))
+                .foregroundStyle(shown ? Color.primary : Color.secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel("About \(pane.rawValue)")
+        .popover(isPresented: Binding(get: { model.paneInfoShown == pane },
+                                      set: { open in if open { model.showPaneInfo(pane) } else if model.paneInfoShown == pane { model.showPaneInfo(nil) } }),
+                 arrowEdge: .bottom) {
+            content()
+                .frame(width: 440, alignment: .leading)
+                .padding(18)
+        }
+    }
+}
+
+/// Inline Markdown for the info popovers: bold, emphasis and code spans, in which backslashes stay literal.
+private func infoText(_ markdown: String) -> Text {
+    let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    return Text((try? AttributedString(markdown: markdown, options: options)) ?? AttributedString(markdown))
+}
+
+/// A pane's info popover: title, an opening paragraph, one paragraph per source, a closing line.
+struct PaneInfoText: View {
+    let title: String
+    let intro: String
+    let items: [String]
+    let footer: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.system(size: Theme.paneTitle, weight: .semibold))
+            infoText(intro)
+            ForEach(items, id: \.self) { infoText($0).padding(.leading, 12) }
+            infoText(footer).foregroundStyle(.secondary)
+        }
+        .font(.system(size: 13))
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Where speaker notes come from (SPEC §5.1), in priority order, with the LaTeX for each (feedback round 9).
+struct NotesSourcesInfo: View {
+    var body: some View {
+        PaneInfoText(
+            title: "Notes",
+            intro: "Speaker notes for the current slide, read from the PDF itself and from files beside it with the same name. Where a page has notes from more than one source, the earlier one here wins; a build without notes shows its frame's. The heading says which source the note came from.",
+            items: [
+                #"**pdfpc file.** `talk.pdfpc` beside `talk.pdf`, as pdfpc writes it: one note per slide, Markdown allowed. Its duration and end slide also set the countdown and where the main talk ends."#,
+                #"**pdfpc package.** In LaTeX, `\usepackage{pdfpc}` and `\pdfpcnote{…}` inside a frame; `\only<2>{\pdfpcnote{…}}` for one build only. `\usepackage[duration=30,enduserslide=5]{pdfpc}` sets the countdown and the end of the talk."#,
+                #"**pdfcomment package.** `\usepackage{pdfcomment}` and `\pdfcomment{…}` or `\pdfmargincomment{…}` inside a frame. The comments' text becomes the notes; comments are never drawn on the slide."#,
+                #"**Beamer notes on a second screen.** `\usepackage{pgfpages}` and `\setbeameroption{show notes on second screen=right}` (or `left`, `bottom`), with `\note{…}` or `\note<2>{…}` in frames. Each page then holds the slide and its notes side by side: Lectern asks once per deck, shows the notes half here as an image and sends the audience the slide half only."#,
+                "**PowerPoint.** Export the deck to PDF and keep the `.pptx` with the same name beside it. Its speaker notes map to the pages in order; hidden slides are skipped, and a slide count that does not match gives a warning rather than the wrong notes.",
+            ],
+            footer: "Notes in a `talk.lectern.json` sidecar beside the PDF come before all of these. Text notes render basic Markdown (*emphasis*, `code`, lists, line breaks); ⌘+ and ⌘− change their size.")
+    }
+}
+
+/// Where the table of contents comes from (SPEC §4.4): the PDF outline, and how each toolchain writes one.
+struct ContentsSourcesInfo: View {
+    let hasOutline: Bool
+
+    var body: some View {
+        PaneInfoText(
+            title: "Contents",
+            intro: hasOutline
+                ? "The PDF's outline (its bookmarks): one entry per section with the frame it starts on, the one you are in highlighted. Click an entry to jump there; Back (⌫) returns."
+                : "This PDF has no outline (bookmarks), so the tab is off. With one, Contents lists each section with the frame it starts on, highlights the one you are in, and jumps there on a click.",
+            items: [
+                #"**Beamer.** Every `\part`, `\section`, `\subsection` and `\subsubsection` becomes an entry; nothing else is needed."#,
+                "**Other LaTeX.** Load `hyperref`; the sectioning commands then write bookmarks. Pandoc's Beamer output has them already.",
+                "**PowerPoint and Keynote.** Their PDF exports usually carry no outline. The Overview (Tab) shows every frame instead.",
+            ],
+            footer: "An entry titled Appendix, Backup or Supplementary marks where the main talk ends; the frames after it count as appendix, unless pdfpc metadata or the sidecar say otherwise.")
     }
 }
 
