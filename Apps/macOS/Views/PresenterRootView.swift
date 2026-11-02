@@ -630,26 +630,33 @@ struct StatusBar: View {
 
     @ViewBuilder
     private func timerText(_ timer: TimerState, now: Date) -> some View {
-        // The arrow says which way the clock runs, or will run once presenting starts; a clock paused mid-talk shows
-        // the pause mark instead. Dimmed whenever it is not running (feedback round 7).
+        // The arrow after the time says which way the clock runs, or will run once presenting starts; a clock paused
+        // mid-talk shows the pause mark instead. Dimmed whenever it is not running (feedback round 7).
         let paused = !timer.isRunning && timer.elapsed(at: now) > 0
         let icon = paused ? "pause.circle" : (timer.target != nil ? "arrow.down" : "arrow.up")
         let state = timer.isRunning ? "" : (paused ? ", paused" : ", starts with presenting")
         if let remaining = timer.remaining(at: now) {
             let over = remaining.rounded() < 0
-            Label((over ? "−" : "") + StatusBar.format(abs(remaining)), systemImage: icon)
-                .font(.system(size: Theme.status, weight: .semibold, design: .rounded))
-                .monospacedDigit()
+            let text = (over ? "−" : "") + StatusBar.format(abs(remaining))
+            clock(text, icon: icon)
                 .foregroundStyle(over ? Color.red : Color.green)
                 .opacity(timer.isRunning ? 1 : 0.6)
-                .accessibilityLabel((over ? "Over time" : "Time left") + state)
+                .accessibilityLabel((over ? "Over time " : "Time left ") + text + state)
         } else {
-            Label(StatusBar.format(timer.elapsed(at: now)), systemImage: icon)
-                .font(.system(size: Theme.status, weight: .semibold, design: .rounded))
-                .monospacedDigit()
+            let text = StatusBar.format(timer.elapsed(at: now))
+            clock(text, icon: icon)
                 .foregroundStyle(timer.isRunning ? .primary : .secondary)
-                .accessibilityLabel("Elapsed" + state)
+                .accessibilityLabel("Elapsed " + text + state)
         }
+    }
+
+    /// The time, then the arrow: smaller and lighter than the digits, a marker rather than a second glyph (feedback round 8).
+    private func clock(_ text: String, icon: String) -> some View {
+        HStack(spacing: 8) {
+            Text(text).font(.system(size: Theme.status, weight: .semibold, design: .rounded)).monospacedDigit()
+            Image(systemName: icon).font(.system(size: Theme.status * 0.65, weight: .regular))
+        }
+        .accessibilityElement(children: .ignore)
     }
 
     /// Only the audience modes that hide the live slide get a pill; presenting itself shows on the Present
@@ -739,13 +746,15 @@ struct StatusBar: View {
     }
 }
 
-/// The popover on the timer: type a countdown ("45", "45:00", "1h30"); Return sets it. The time left is the
-/// countdown minus the talk's elapsed time, so it can be set before or during the talk. Reset puts the clock back to
-/// zero, running again at once if presenting (feedback round 7).
+/// The popover on the timer (feedback round 8): Count up, or Count down from the time typed after it ("45", "45:00",
+/// "1h30"), applied as it is chosen or typed, so there is nothing to confirm; Return closes the popover. The time
+/// left is the countdown minus the talk's elapsed time, so it can be set before or during the talk. Reset puts the clock back to zero, running again at once if presenting
+/// (feedback round 7).
 struct CountdownEditor: View {
     let model: AppModel
     let presentation: Presentation
     @Binding var isPresented: Bool
+    @State private var countsDown = false
     @State private var text = ""
     @State private var invalid = false
     @FocusState private var fieldFocused: Bool
@@ -753,39 +762,32 @@ struct CountdownEditor: View {
     var body: some View {
         let timer = presentation.state.timer
         VStack(alignment: .leading, spacing: 10) {
-            Text("Count down from").font(.headline)
-            HStack {
-                TextField("minutes, or h:mm:ss", text: $text)
+            radio("Count up", on: !countsDown, action: countUp)
+            HStack(spacing: 8) {
+                radio("Count down from", on: countsDown) { _ = countDown() }
+                TextField("20:00", text: $text)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 160)
+                    .frame(width: 92)   // room for 1:30:00
                     .focused($fieldFocused)
-                    .onSubmit(apply)
-                Button("Set", action: apply).keyboardShortcut(.defaultAction)
+                    .onSubmit { if countDown() { isPresented = false } }
+                    .help("Minutes (45), minutes:seconds (45:00) or hours (1h30)")
             }
             if invalid {
-                Text("Enter minutes (45), minutes:seconds (45:00) or hours (1h30).").font(.callout).foregroundStyle(.red)
+                Text("Minutes (45), minutes:seconds (45:00) or hours (1h30)").font(.callout).foregroundStyle(.red)
             }
-            Text("Elapsed so far: \(StatusBar.format(timer.elapsed(at: Date()))). The time left replaces the elapsed time, green until it runs out, then red and counting up. The clock runs while presenting or rehearsing; T pauses it.")
-                .font(.callout).foregroundStyle(.secondary)
-            HStack {
-                Button("Reset clock to zero") {
-                    _ = model.perform(.resetTimer)
-                    isPresented = false
-                }
-                .disabled(timer.elapsed(at: Date()) == 0)
-                .help(model.isPresenting ? "Back to zero and running (⌥T)" : "Back to zero (⌥T)")
-                if timer.target != nil {
-                    Button("Remove countdown, show elapsed time") {
-                        model.setTargetDuration(nil)
-                        isPresented = false
-                    }
-                }
+            Divider()
+            Button("Reset to 00:00") {
+                _ = model.perform(.resetTimer)
+                isPresented = false
             }
+            .disabled(timer.elapsed(at: Date()) == 0)
+            .help(model.isPresenting ? "Back to zero and running (⌥T)" : "Back to zero (⌥T)")
         }
         .padding(16)
-        .frame(width: 360)
         .onAppear {
-            if let target = timer.target { text = StatusBar.format(target) }
+            countsDown = timer.target != nil
+            let last = UserDefaults.standard.object(forKey: AppSettings.lastCountdownKey) as? TimeInterval
+            text = StatusBar.format(timer.target ?? last ?? 20 * 60)
             // The popover's window exists only after this appear; focusing a moment later makes it key, so typing
             // lands in the field rather than in the presenter's key map (verified by the self-test).
             Task { @MainActor in
@@ -793,14 +795,46 @@ struct CountdownEditor: View {
                 fieldFocused = true
             }
         }
+        .onChange(of: text) { _, _ in
+            // Typing a time means counting down from it, applied as it is typed; a half-typed "20:" is left alone.
+            guard fieldFocused else { return }
+            countsDown = true
+            invalid = false
+            if let seconds = DurationParser.seconds(from: text) { setCountdown(seconds) }
+        }
     }
 
-    private func apply() {
+    /// A radio button drawn with symbols: a picker's radio group cannot hold the text field on its second row.
+    private func radio(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: on ? "circle.inset.filled" : "circle")
+                .foregroundStyle(on ? Color.accentColor : Color.secondary, Color.primary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+    }
+
+    private func countUp() {
+        countsDown = false
+        invalid = false
+        if presentation.state.timer.target != nil { model.setTargetDuration(nil) }
+    }
+
+    /// Counts down from the field's time; a time that does not parse is flagged and leaves the clock as it is.
+    private func countDown() -> Bool {
+        countsDown = true
         guard let seconds = DurationParser.seconds(from: text) else {
             invalid = true
-            return
+            fieldFocused = true
+            return false
         }
-        model.setTargetDuration(seconds)
-        isPresented = false
+        invalid = false
+        setCountdown(seconds)
+        return true
+    }
+
+    private func setCountdown(_ seconds: TimeInterval) {
+        if seconds != presentation.state.timer.target { model.setTargetDuration(seconds) }
+        UserDefaults.standard.set(seconds, forKey: AppSettings.lastCountdownKey)
     }
 }

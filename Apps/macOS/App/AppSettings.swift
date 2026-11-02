@@ -5,9 +5,11 @@ import PresenterCore
 enum AppSettings {
     static let previousLandsOnFrameStartKey = "nav.previousLandsOnFrameStart"
     static let notesFontSizeKey = "notesFontSize"
-    /// Presenting puts the presenter window into full screen; ending presenting leaves it (not when the audience view
-    /// is a window on this display, which full screen would hide).
+    /// Presenting or rehearsing puts the presenter window into full screen; ending leaves it. With one display the
+    /// audience window floats above the full-screen presenter (feedback round 8).
     static let fullScreenWhilePresentingKey = "presenting.fullScreen"
+    /// The last countdown set in the timer's popover, in seconds: what "Count down from" offers next time.
+    static let lastCountdownKey = "timer.lastCountdown"
     /// Overview: every build as its own thumbnail (expanded) rather than one per frame (collapsed).
     static let overviewShowsBuildsKey = "overview.showsBuilds"
     /// SPEC §4.3: URI links are ignored unless this is on.

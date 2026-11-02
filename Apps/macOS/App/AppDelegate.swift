@@ -25,8 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         presenterWindow = PresenterWindowController(model: model)
         model.onDeckOpened = { [weak self] url in self?.showPresenter(deck: url) }
         model.onDeckClosed = { [weak self] in self?.showWelcome() }
-        model.onPresentingChanged = { [weak self] mode, hasAudienceDisplay in
-            self?.presenterWindow.presentingChanged(mode, hasAudienceDisplay: hasAudienceDisplay)
+        model.onPresentingChanged = { [weak self] mode in
+            self?.presenterWindow.presentingChanged(mode)
         }
         welcomeWindow.show()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
