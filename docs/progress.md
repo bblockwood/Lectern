@@ -489,3 +489,27 @@ Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-t
 2. With the TV: ⇧⌘P fills the TV and the presenter goes full screen, as before.
 3. Click the clock: Count up / Count down from [20:00]. Click Count down: the clock reads `20:00 ↓` at once; type 45: it reads `45:00`; Return closes. Click Count up: `00:00 ↑`. Reset to 00:00 while presenting restarts at once.
 4. Tab in a multi-build frame: `2 ⧉ 1 2 3` under its thumbnail, and the rows below stay put as you move in and out of the frame.
+
+## Feedback round 9 (2026-11-02, branch `feedback-9`)
+
+**Plan.** Ben's one item: an ⓘ after both the Notes and the Contents heading, each opening a popover that explains how to get content into that pane, with detail on every supported notes format.
+
+**Done.**
+1. **ⓘ after both headings** (`PaneInfoButton`): `info.circle` at the small size, secondary until open, with a hover hint. The popover opens below the heading, 440 pt wide, text selectable. Which popover is open is model state (`AppModel.paneInfoShown`, `showPaneInfo`), so the self-test can drive it; Esc closes an open popover before it does anything else.
+2. **Notes popover** (`NotesSourcesInfo`): an opening paragraph (sources merge per page, the earlier wins, a build inherits its frame's notes, the heading names the source), then the five sources of SPEC §5.1 in priority order with the LaTeX or companion file each needs: the `.pdfpc` file; the pdfpc package (`\pdfpcnote`, `\only<2>{…}`, `duration` / `enduserslide`); pdfcomment (`\pdfcomment`, `\pdfmargincomment`); Beamer second-screen notes (`pgfpages`, `show notes on second screen=right`, `\note`); PowerPoint (`.pptx` beside the PDF, hidden slides skipped, a count mismatch warns). A closing line covers the sidecar and Markdown (⌘+ / ⌘−).
+3. **Contents popover** (`ContentsSourcesInfo`): the PDF outline, click to jump, Back returns; Beamer's `\part` / `\section` / `\subsection` / `\subsubsection` make entries (checked in `beamerbasesection.sty`, which calls `\Hy@writebookmark` for each); other LaTeX needs `hyperref`; PowerPoint and Keynote exports usually carry none, so the Overview serves instead; the Appendix / Backup / Supplementary rule. The opening paragraph changes when the deck has no outline.
+4. **Contents tab always shown**, dim and inert when the outline is empty (`PaneTab.enabled`), because that is exactly when the explanation is needed; it used to be hidden.
+5. **Self-test**: `-contents` now opens both popovers through the model, closes the Notes one with the escape command and the other through the model, and prints `PANEINFO` with the popover's size and appearance. Popover screenshots are filled with their appearance's background first: `render(in:)` drops the vibrant material, so white text vanished on the PNG's white.
+
+**Verified** (2026-11-02, over SSH, the Mac at its login window): 15 app tests, warnings-as-errors build. Self-tests `basic-169.pdf` (outline of 4; `-contents -escape`), `transitions.pdf` (no outline), `pdfpc-notes.pdf` (`-notes -contents`): PANEINFO notes and contents OK on all three, popovers 502×599 and 502×323 in NSAppearanceNameVibrantDark, closed again. Screenshots reviewed: both popovers' full text, the header `Notes ⓘ Contents ⓘ`, the dim Contents tab on `transitions.pdf`, the "from PDF annotations" label still at the right. PresenterCore untouched.
+
+**Known issues**
+- The dim Contents tab shows no hover hint (AppKit gives disabled controls none); its ⓘ carries the explanation.
+- The two popovers are the only in-app documentation of the notes formats; a Help menu entry could reuse the same texts.
+- "PowerPoint and Keynote exports usually carry no outline" is from experience, not checked against current versions of either.
+
+**Ben device checklist (feedback round 9)**
+1. Open a deck, click ⓘ after Notes: the popover opens below the heading with the five sources. Press Esc: it closes and nothing else happens (no "Esc again to end", Laser and Draw untouched). Click ⓘ again, then click elsewhere: it closes.
+2. Click ⓘ after Contents: the outline explanation. Click an outline entry with the popover closed: still jumps.
+3. Open a PDF without bookmarks (a PowerPoint or Keynote export, or `Fixtures/transitions.pdf`): Contents is dim and does nothing; its ⓘ opens and says the deck has no outline.
+4. Read both texts once for your own workflow: anything wrong or missing (a notes format you use that is not listed, a macro named wrong) is a one-line change.

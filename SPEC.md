@@ -147,7 +147,7 @@ The remaining-frames count and the pace indicator use it. Beyond this page, the 
 ### 4.4 Outline and search
 
 - Show the PDF outline as a table of contents: on the Mac it lives in the notes pane (below), not in the overview.
-- The notes pane doubles as the table of contents (feedback rounds 2 and 3): a Contents heading shows the outline with the current part highlighted and each entry's frame; clicking an entry jumps there. Which of the two shows is decided once when a deck opens (contents if the first slide has no notes) and then only by the presenter; it never flips from slide to slide.
+- The notes pane doubles as the table of contents (feedback rounds 2 and 3): a Contents heading shows the outline with the current part highlighted and each entry's frame; clicking an entry jumps there. Which of the two shows is decided once when a deck opens (contents if the first slide has no notes) and then only by the presenter; it never flips from slide to slide. Both headings carry an ⓘ whose popover says where the pane's content comes from, and the Contents tab stays in place, dim, when the deck has no outline, so the explanation is there for whoever needs it (2026-11-02).
 - Full-text search uses the PDF text layer. Results are grouped by frame. On the Mac, clicking a result or pressing Enter on it jumps there at once and the overview stays open (private browsing was dropped; Ben found the frozen audience awkward).
 
 ### 4.5 Transitions
