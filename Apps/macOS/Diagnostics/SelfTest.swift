@@ -141,6 +141,18 @@ final class SelfTest {
             let page = presentation.state.presenterPage
             let current = outline.currentEntry(forPage: page)
             print("CONTENTS outline entries \(outline.flattened.count); on page \(page + 1) the current entry is \(current.map { "\"\($0.title)\" (page \(($0.pageIndex ?? -1) + 1))" } ?? "none")")
+            // The ⓘ after each heading opens a popover below it (feedback round 9), driven through the model here.
+            for pane in [AppModel.PaneInfo.notes, .contents] {
+                model.showPaneInfo(pane)
+                try? await Task.sleep(for: .milliseconds(500))
+                let popover = NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
+                captureScreenshots(suffix: "-\(pane.rawValue)-info")
+                let size = popover.map { "open, \(Int($0.frame.width))×\(Int($0.frame.height)), \($0.effectiveAppearance.name.rawValue)" } ?? "missing"
+                if pane == .notes { _ = model.perform(.escape) } else { model.showPaneInfo(nil) }   // Esc closes it first of all
+                try? await Task.sleep(for: .milliseconds(300))
+                let closed = !NSApp.windows.contains { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
+                print("PANEINFO \(pane.rawValue) \(popover != nil && closed ? "OK" : "FAIL"): popover \(size); closed again by \(pane == .notes ? "Esc" : "the model") \(closed)")
+            }
         }
         if CommandLine.arguments.contains("-modes"), let model = (NSApp.delegate as? AppDelegate)?.model,
            let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
@@ -554,6 +566,13 @@ final class SelfTest {
             // screen (its own layer) but erases everything underneath in one flattened render. So each
             // top-level sublayer is rendered on its own and the results are composited source-over.
             guard let final = context() else { continue }
+            if kind == "popover" {
+                // A popover's vibrant background is not rendered by `render(in:)`; fill with its appearance's
+                // background so the white text of a dark popover does not vanish on the PNG's white.
+                let dark = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                final.setFillColor(CGColor(gray: dark ? 0.16 : 1, alpha: 1))
+                final.fill(view.bounds)
+            }
             let sublayers = layer.sublayers ?? []
             if sublayers.count > 1 {
                 let wasHidden = sublayers.map(\.isHidden)
