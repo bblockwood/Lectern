@@ -45,8 +45,8 @@ targets:
       path: Apps/macOS/Info.plist
       properties:
         CFBundleDisplayName: Lectern
-        CFBundleShortVersionString: "0.1"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.1.1"
+        CFBundleVersion: "2"
         LSApplicationCategoryType: public.app-category.productivity
         NSPrincipalClass: NSApplication
         NSHumanReadableCopyright: ""
