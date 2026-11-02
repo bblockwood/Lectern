@@ -7,8 +7,8 @@ final class AudienceWindow: NSWindow {
 }
 
 /// The audience window: full-screen and borderless on the audience display at shielding level (menu bar and
-/// Dock stay off it), or a plain resizable window when presenting live with one display (SPEC §6.1). Rehearsal
-/// (feedback round 7) shows no audience window at all.
+/// Dock stay off it), or a plain resizable window when presenting live with one display (SPEC §6.1), floating
+/// above the presenter window when that is full screen. Rehearsal (feedback round 7) shows no audience window.
 @MainActor
 final class AudienceWindowController: NSObject, NSWindowDelegate {
     enum Mode: Equatable {
@@ -60,8 +60,10 @@ final class AudienceWindowController: NSObject, NSWindowDelegate {
             window.styleMask = [.titled, .resizable, .closable, .miniaturizable]
             window.title = "Audience"
             // The self-test runs from a terminal that covers everything; an occluded window gets no display-link ticks.
-            window.level = SelfTest.isActive ? .screenSaver : .normal
-            window.collectionBehavior = [.managed, .participatesInCycle]
+            window.level = SelfTest.isActive && !SelfTest.audienceWindowAtNormalLevel ? .screenSaver : .normal
+            // Allowed in the presenter's full-screen Space, so Present with one display can go full screen with the
+            // audience view floating above it (feedback round 8; see followPresenterSpace).
+            window.collectionBehavior = [.managed, .participatesInCycle, .fullScreenAuxiliary]
             window.contentAspectRatio = NSSize(width: aspect, height: 1)
             let width: CGFloat = 960
             let contentSize = NSSize(width: width, height: (width / aspect).rounded())
@@ -73,6 +75,17 @@ final class AudienceWindowController: NSObject, NSWindowDelegate {
 
     func show() {
         window.orderFrontRegardless()
+    }
+
+    /// While the presenter window is full screen (a Space of its own), the windowed view rides along as its child
+    /// window: that moves it into that Space and keeps it above the presenter. A plain window already on screen
+    /// stays in the desktop Space when the presenter goes full screen, and ordering it front from there switches
+    /// Spaces instead of moving it (feedback round 8). `nil` detaches, before the presenter leaves full screen, so
+    /// the window does not travel with the presenter's frame change.
+    func ride(above presenter: NSWindow?) {
+        if let parent = window.parent, parent !== presenter { parent.removeChildWindow(window) }
+        guard let presenter, mode?.isFullScreen == false, window.isVisible, window.parent == nil else { return }
+        presenter.addChildWindow(window, ordered: .above)
     }
 
     func hide() {

@@ -3,7 +3,9 @@ import PresenterCore
 
 /// `Lectern -selftest deck.pdf [steps]`: opens the deck, presents live with one display (the audience view in a
 /// window), drives synthetic key events through the real input path, and prints latency statistics (SPEC §11 M1
-/// acceptance). Exits when done.
+/// acceptance). Exits when done. Full screen while presenting is off for the process (a volatile argument-domain
+/// default, nothing written to the user's defaults), so steps are not paced by its animations; `-modes` turns it on
+/// for its own checks and `-fullscreen` toggles by hand.
 @MainActor
 final class SelfTest {
     private let url: URL
@@ -17,6 +19,16 @@ final class SelfTest {
     }
 
     static let isActive = CommandLine.arguments.contains("-selftest")
+    /// `-modes` checks that the windowed audience view shows above the full-screen presenter at its real level; the
+    /// rest of the run raises it above the terminal so its display link keeps ticking.
+    static var audienceWindowAtNormalLevel = false
+
+    /// The full-screen-while-presenting setting for this process only.
+    static func setFullScreenWhilePresenting(_ on: Bool) {
+        var domain = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        domain[AppSettings.fullScreenWhilePresentingKey] = on
+        UserDefaults.standard.setVolatileDomain(domain, forName: UserDefaults.argumentDomain)
+    }
 
     static func fromArguments(_ arguments: [String]) -> SelfTest? {
         guard let index = arguments.firstIndex(of: "-selftest"), arguments.indices.contains(index + 1) else { return nil }
@@ -29,6 +41,18 @@ final class SelfTest {
         continueRun(in: model)
     }
 
+    /// Activation from a terminal (or SSH) is granted unevenly; ask a few more times before giving up.
+    private func activate() async {
+        for _ in 0..<10 where !NSApp.isActive {
+            NSApp.activate()
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        if !NSApp.isActive {
+            let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
+            print("SELFTEST WARNING: this instance is not the active app (\(front) is; lid closed, or another Lectern running?); focus-dependent checks are skipped")
+        }
+    }
+
     private func continueRun(in model: AppModel) {
         model.open(url: url)
         guard let presentation = model.presentation else {
@@ -36,6 +60,7 @@ final class SelfTest {
             exit(2)
         }
         presentation.apply(.goToPage(0))   // the sidecar restores the last position; runs must not depend on it
+        Self.setFullScreenWhilePresenting(false)
         model.startPresenting()
         Latency.shared.onSample = { [weak self] sample in
             self?.samples.append(sample)
@@ -48,7 +73,7 @@ final class SelfTest {
 
     private func drive(forward: Int, presentation: Presentation) async {
         try? await Task.sleep(for: .seconds(1.5))   // let the first prefetch ring land
-        if !NSApp.isActive { print("SELFTEST WARNING: this instance is not the active app (another Lectern running?); focus-dependent checks are skipped") }
+        await activate()
         for _ in 0..<forward { await press(keyCode: 124, character: "\u{F703}") }   // → next
         captureScreenshots()
         if CommandLine.arguments.contains("-shortcuts"), let model = (NSApp.delegate as? AppDelegate)?.model {
@@ -119,14 +144,16 @@ final class SelfTest {
         }
         if CommandLine.arguments.contains("-modes"), let model = (NSApp.delegate as? AppDelegate)?.model,
            let window = NSApp.windows.first(where: { $0 is PresenterWindow }) {
-            // Live with one display: the audience view is a window and the presenter stays out of full screen (full
-            // screen would hide that window). ⇧⌘R switches to rehearsal: no audience window, full screen (setting on),
-            // the clock still running. Esc Esc ends: clock paused and full screen left; → while idle leaves the clock
-            // paused; ⇧⌘P resumes it, live again (feedback round 7).
+            // Live with one display: the audience view is a window. With the full-screen setting on (for this block),
+            // ⇧⌘R switches to rehearsal: no audience window, full screen, the clock still running. Esc Esc ends: clock
+            // paused and full screen left; → while idle leaves the clock paused; ⇧⌘P resumes it, live again, full
+            // screen too, with the audience window floating above the presenter at its real level (feedback rounds 7
+            // and 8). Full-screen transitions never complete while the app cannot become active (lid closed over SSH).
+            let fullScreenCheckable = NSApp.isActive
             let audienceWindow = NSApp.windows.first { $0 is AudienceWindow }
-            let setting = AppSettings.fullScreenWhilePresenting
             let liveWindowed = model.presentingMode == .live && audienceWindow?.isVisible == true && !window.styleMask.contains(.fullScreen)
             let runningLive = presentation.state.timer.isRunning
+            Self.setFullScreenWhilePresenting(true)
             await press(keyCode: 15, character: "r", modifiers: [.command, .shift])   // ⇧⌘R
             try? await Task.sleep(for: .seconds(2.5))                                   // the full-screen animation
             let rehearsing = model.presentingMode == .rehearsal && audienceWindow?.isVisible != true
@@ -144,14 +171,38 @@ final class SelfTest {
             await press(keyCode: 124, character: "\u{F703}")
             let stillPaused = !presentation.state.timer.isRunning
             await press(keyCode: 123, character: "\u{F702}")
+            Self.audienceWindowAtNormalLevel = true   // as on Ben's Mac: it must still show above the full-screen presenter
             await press(keyCode: 35, character: "p", modifiers: [.command, .shift])   // ⇧⌘P
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: .seconds(2.5))
             let resumed = model.presentingMode == .live && presentation.state.timer.isRunning && presentation.state.timer.elapsed(at: Date()) >= elapsed
-            // Full-screen transitions never complete while the app cannot become active (lid closed over SSH, say).
-            let fullScreenCheckable = NSApp.isActive
-            let fullScreenOK = !fullScreenCheckable || (wentFullScreen == setting && leftFullScreen)
+            let liveFullScreen = window.styleMask.contains(.fullScreen)
+            // In the presenter's full-screen Space and not covered by it, also after the presenter is ordered front again.
+            func audienceShowing() -> (ok: Bool, detail: String) {
+                let onSpace = audienceWindow?.isOnActiveSpace == true, seen = audienceWindow?.occlusionState.contains(.visible) == true
+                let presenterOnSpace = window.isOnActiveSpace   // its occlusion flag lags the Space switch; this does not
+                return (audienceWindow?.isVisible == true && onSpace && seen && presenterOnSpace,
+                        "audience on the active Space \(onSpace), unoccluded \(seen); presenter on it \(presenterOnSpace)")
+            }
+            let (audienceAbove, aboveDetail) = audienceShowing()
+            window.makeKeyAndOrderFront(nil)
+            try? await Task.sleep(for: .milliseconds(300))
+            let (staysAbove, staysDetail) = audienceShowing()
+            // ⌃⌘F by hand while live: the presenter leaves full screen and the audience window comes back with it.
+            window.toggleFullScreen(nil)
+            try? await Task.sleep(for: .seconds(2.5))
+            let (backOnDesktop, backDetail) = audienceShowing()
+            let leftByHand = !window.styleMask.contains(.fullScreen) && backOnDesktop
+            Self.audienceWindowAtNormalLevel = false
+            // Windowed again for the rest of the run: end, setting off, present again.
+            await press(keyCode: 53, character: "\u{1b}")
+            await press(keyCode: 53, character: "\u{1b}")
+            try? await Task.sleep(for: .seconds(2.5))
+            Self.setFullScreenWhilePresenting(false)
+            model.startPresenting()
+            try? await Task.sleep(for: .seconds(1))
+            let fullScreenOK = !fullScreenCheckable || (wentFullScreen && leftFullScreen && liveFullScreen && audienceAbove && staysAbove && leftByHand)
             let ok = liveWindowed && runningLive && rehearsing && fullScreenOK && stillRunning && ended && paused && elapsed > 0 && stillPaused && resumed
-            print("MODES \(ok ? "OK" : "FAIL"): live with one display: audience window shown and presenter not full screen \(liveWindowed), clock running \(runningLive); ⇧⌘R: rehearsing with no audience window \(rehearsing), full screen \(wentFullScreen) (setting \(setting ? "on" : "off")\(fullScreenCheckable ? "" : "; NOT CHECKABLE, app inactive")), clock still running \(stillRunning); Esc Esc: ended \(ended), clock paused \(paused) at \(Int(elapsed)) s, full screen left \(leftFullScreen); → while idle left it paused \(stillPaused); ⇧⌘P resumed, live \(resumed)")
+            print("MODES \(ok ? "OK" : "FAIL"): live with one display: audience window shown \(liveWindowed), clock running \(runningLive); ⇧⌘R: rehearsing with no audience window \(rehearsing), full screen \(wentFullScreen), clock still running \(stillRunning); Esc Esc: ended \(ended), clock paused \(paused) at \(Int(elapsed)) s, full screen left \(leftFullScreen); → while idle left it paused \(stillPaused); ⇧⌘P resumed, live \(resumed), full screen \(liveFullScreen) with the audience window above it \(audienceAbove) (\(aboveDetail)), still after the presenter is ordered front \(staysAbove) (\(staysDetail)); ⌃⌘F by hand: windowed again with the audience window \(leftByHand) (\(backDetail))\(fullScreenCheckable ? "" : "; full screen NOT CHECKABLE, app inactive")")
         }
         if CommandLine.arguments.contains("-back"), let model = (NSApp.delegate as? AppDelegate)?.model {
             // A jump offers "Back to Frame X" under the slide; builds shown at the target keep it; ⌫ returns and offers

@@ -243,6 +243,8 @@ struct FrameCell: View {
 
     /// Beyond this, the current frame's builds are shown as "k/n" rather than one number each.
     private static let maxListedBuilds = 8
+    /// The label row is this tall whether it holds a count or the build list, so nothing below it moves (feedback round 8).
+    private static let labelRowHeight: CGFloat = 24
 
     var body: some View {
         let frame = item.frame
@@ -256,11 +258,13 @@ struct FrameCell: View {
             .aspectRatio(aspect, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(isSelected ? Color.accentColor : (isAudience ? .orange : .clear), lineWidth: isSelected ? 6 : 4))
-            // Everything on the text baseline, so the build count sits level with the frame number (feedback round 7).
+            // Everything on the text baseline, so the build count sits level with the frame number (feedback round 7),
+            // in a row of fixed height, so a frame listing its builds does not push the rows below it down (round 8).
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(frame.label).font(.system(size: Theme.small, weight: .semibold))
                 if frame.buildCount > 1 {
                     if listsBuilds, let buildShown, frame.buildCount <= FrameCell.maxListedBuilds {
+                        Text(Image(systemName: "rectangle.stack")).font(.system(size: Theme.small)).foregroundStyle(.secondary)
                         buildList(frame: frame, current: buildShown)
                     } else {
                         Label(buildShown.map { "\($0 + 1)/\(frame.buildCount)" } ?? "\(frame.buildCount)", systemImage: "rectangle.stack")
@@ -278,6 +282,7 @@ struct FrameCell: View {
                         .accessibilityLabel("Has notes")
                 }
             }
+            .frame(height: FrameCell.labelRowHeight)
         }
         .contentShape(Rectangle())
     }

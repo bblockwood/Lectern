@@ -455,3 +455,37 @@ Verified: 96 PresenterCore tests, 15 app tests, warnings-as-errors build; self-t
 5. Click a link to the appendix, press → twice, read "Back to Frame X" under the slide's bottom right, click it: back where you were, and "Forward to Frame Y" offers the way on; ⌘] takes it. Tab, click a frame, then a frame in the Contents list: Back goes through them in order.
 6. Tab: the header shows Frames | Builds. In Frames, go into a multi-build frame: under its thumbnail `1 2 3` with the current build lit, the thumbnail changing with each →; click a number. Switch to Builds: every build is a cell with `k/n`; the ring follows →. The label row's numbers sit level with the frame number.
 7. Clock click: "Reset clock to zero" while presenting restarts at once; while idle it stays at zero.
+
+## Feedback round 8 (2026-11-02, branch `feedback-8`)
+
+**Plan.** Ben's five items, in one branch:
+
+1. The clock's direction arrow: smaller, lighter, after the time.
+2. Overview, Frames mode: keep the builds symbol between the frame number and the build list.
+3. Overview, Frames mode: the label row keeps one height, so listing builds does not push the rows below down.
+4. The timer popover: two radio choices, Count up / Count down from [time], instead of the field, Set button and paragraph.
+5. Present goes full screen like Rehearse, with one display too.
+
+**Done.**
+
+1. **Clock arrow.** `StatusBar.clock` puts the time first and the arrow (or pause mark) after it at two thirds of the digits' size, regular weight; accessibility labels carry the time and state.
+2. **Builds symbol** stays before the `1 2 3` list in Frames mode.
+3. **Fixed label row.** `FrameCell.labelRowHeight` (24 pt) for every cell, count or list.
+4. **Countdown popover.** `CountdownEditor` is two symbol-drawn radio rows and a small "Reset to 00:00". Count up applies at once; Count down applies the field's time as it is chosen or typed (a half-typed "20:" is left alone); Return closes; the field starts from the current countdown, else the last one set (`timer.lastCountdown`), else 20:00. No paragraph, no Set button.
+5. **Present full screen with one display.** `presentingChanged` wants full screen for either mode. The windowed audience view rides above the full-screen presenter as its child window (`AudienceWindowController.ride(above:)`), attached in `windowDidEnterFullScreen` and detached in `windowWillExitFullScreen`; `windowDidExitFullScreen` orders it front again. `canJoinAllSpaces` and a hide-and-reshow were tried first: the first does not put a window into a full-screen Space, the second switches Spaces instead of moving the window. Switching from rehearsal to live while full screen, and Presentation ▸ Audience Window, attach too. Settings note and SPEC §6.1 follow.
+6. **Self-test.** The full-screen setting is off for the process through a volatile argument-domain default (nothing written to defaults), so steps are not paced by animations; `-modes` turns it on and now checks Present full screen with the audience window on the active Space and unoccluded, still so after the presenter is ordered front, and back above it after ⌃⌘F by hand. Activation is retried; launching through `open -W -n --stdout … --args` gets it reliably from SSH where a bare launch is refused while another app (Reminders) is frontmost.
+
+**Verified** (2026-11-02, lid open, over SSH): 15 app tests, warnings-as-errors build. Self-tests: `overlays.pdf` (MODES with full screen checkable, BACK, FULLSCREEN, ESCAPE, OVERVIEW, COUNTDOWN ×2, INK ×2), `basic-169.pdf` (SHORTCUTS, CLICKS, COUNTDOWN ×2, CONTENTS, CLOSEBUTTON, ESCAPE, TITLEBAR), `links-appendix.pdf` (BACK, ROUNDTRIP), `pdfpc-notes.pdf` (COUNTDOWN ×2, RELOAD ×3), all OK. Screenshots reviewed: idle `00:11 ⏸`, live `00:29 ↑`, countdown `24:58 ↓`, the popover, the overview with `2 ⧉ 1 2 3` and level rows. PresenterCore untouched.
+
+**Known issues**
+
+- With one display the audience window covers part of the full-screen presenter; drag it aside or close it (Presentation ▸ Audience Window brings it back). Its position is not remembered between talks.
+- Typing a countdown applies each keystroke's value in turn (2, 20, 20:00), so the status bar passes through intermediate times while the popover is open.
+- The self-test's in-process screenshots cannot show the audience window over the presenter; the Space and occlusion checks stand in for it.
+
+**Ben device checklist (feedback round 8)**
+
+1. Lid open, one display. ⇧⌘P: the presenter goes full screen and the Audience window floats above it; drag it, close it, bring it back with Presentation ▸ Audience Window. ⌃⌘F: back to a window with the audience window still above. Esc Esc ends.
+2. With the TV: ⇧⌘P fills the TV and the presenter goes full screen, as before.
+3. Click the clock: Count up / Count down from [20:00]. Click Count down: the clock reads `20:00 ↓` at once; type 45: it reads `45:00`; Return closes. Click Count up: `00:00 ↑`. Reset to 00:00 while presenting restarts at once.
+4. Tab in a multi-build frame: `2 ⧉ 1 2 3` under its thumbnail, and the rows below stay put as you move in and out of the frame.

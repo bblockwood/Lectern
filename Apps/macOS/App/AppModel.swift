@@ -83,8 +83,8 @@ final class AppModel {
     /// The app delegate swaps the chooser and presenter windows on these (feedback round 3).
     @ObservationIgnored var onDeckOpened: ((URL) -> Void)?
     @ObservationIgnored var onDeckClosed: (() -> Void)?
-    /// Presenting started, switched mode, stopped, or gained an audience display; the delegate drives full screen.
-    @ObservationIgnored var onPresentingChanged: ((_ mode: PresentingMode?, _ hasAudienceDisplay: Bool) -> Void)?
+    /// Presenting started, switched mode or stopped; the delegate drives full screen.
+    @ObservationIgnored var onPresentingChanged: ((_ mode: PresentingMode?) -> Void)?
     /// Notes font size in points, persisted per device (SPEC §5.2).
     var notesFontSize: Double {
         get { UserDefaults.standard.object(forKey: AppSettings.notesFontSizeKey) as? Double ?? Theme.notesDefault }
@@ -428,7 +428,7 @@ final class AppModel {
                                    presenterDisplay: displays.assignment.presenter?.id)
         let audienceName = mode == .live ? (displays.assignment.audience?.name ?? "a window (one display)") : "none (rehearsal)"
         log.notice("\(switching ? "switched to" : "started", privacy: .public) \(mode == .live ? "live" : "rehearsal", privacy: .public); audience view: \(audienceName, privacy: .public)")
-        onPresentingChanged?(mode, displays.assignment.audience != nil)
+        onPresentingChanged?(mode)
     }
 
     func endPresenting() {
@@ -443,7 +443,7 @@ final class AppModel {
         presentation?.setPresenting(false, audienceDisplay: nil, presenterDisplay: displays.assignment.presenter?.id)
         if let banner = audienceDisplayLostBanner { dismiss(banner); audienceDisplayLostBanner = nil }
         log.notice("presenting ended")
-        onPresentingChanged?(nil, displays.assignment.audience != nil)
+        onPresentingChanged?(nil)
     }
 
     func swapDisplays() {
@@ -451,10 +451,30 @@ final class AppModel {
         // displaysChanged() runs from the manager's onChange.
     }
 
+    /// The presenter window while it is full screen, else nil; the windowed audience view rides above it there.
+    private var presenterFullScreenWindow: NSWindow?
+
+    /// The presenter window finished entering full screen (`window`), or is about to leave it (nil).
+    func presenterFullScreenChanged(_ window: NSWindow?) {
+        presenterFullScreenWindow = window
+        audienceWindow?.ride(above: window)
+    }
+
+    /// The presenter window is back from full screen, ordered front by AppKit: the audience window goes back above it.
+    func presenterLeftFullScreen() {
+        guard isLive, audienceWindowVisible else { return }
+        audienceWindow?.show()
+    }
+
     /// Live with one display: show or hide the audience window (hidden, live looks like rehearsal but B / W / F still work).
     func toggleAudienceWindow() {
         guard isLive, displays.assignment.audience == nil, let audienceWindow else { return }
-        if audienceWindowVisible { audienceWindow.hide() } else { audienceWindow.show() }
+        if audienceWindowVisible {
+            audienceWindow.hide()
+        } else {
+            audienceWindow.show()
+            audienceWindow.ride(above: presenterFullScreenWindow)
+        }
         audienceWindowVisible.toggle()
     }
 
@@ -470,6 +490,7 @@ final class AppModel {
             let aspect = presentation.document.pages.first?.aspectRatio ?? 16.0 / 9.0
             controller.configure(.windowed(aspectRatio: aspect, near: displays.screen(for: displays.assignment.presenter)))
             controller.show()
+            controller.ride(above: presenterFullScreenWindow)   // switching from rehearsal in full screen
             audienceWindowVisible = true
         }
     }
@@ -483,7 +504,6 @@ final class AppModel {
                 log.notice("audience display is back: \(audience.name, privacy: .public)")
             }
             configureAudienceWindow(for: presentation)
-            onPresentingChanged?(.live, true)   // a display that arrives mid-talk also gets the full-screen treatment
         } else if audienceWindow?.mode?.isFullScreen == true {
             // The audience display went away mid-talk: keep presenting, say so, wait for it to return (SPEC §6.1).
             audienceWindow?.hide()

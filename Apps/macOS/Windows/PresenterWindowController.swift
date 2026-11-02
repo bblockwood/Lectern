@@ -70,19 +70,12 @@ final class PresenterWindowController: NSWindowController, NSWindowDelegate {
         window.title = "Lectern"
     }
 
-    /// Presenting puts the window into full screen (when the setting is on) and ending presenting leaves it again,
-    /// but only if it was entered this way; full screen entered by hand is left alone. Live with one display is the
-    /// exception: the audience view is a window on this screen, which full screen would hide (feedback round 7).
-    /// Switching between live and rehearsal applies the same rule.
-    func presentingChanged(_ mode: AppModel.PresentingMode?, hasAudienceDisplay: Bool) {
+    /// Presenting or rehearsing puts the window into full screen (when the setting is on) and ending leaves it again,
+    /// but only if it was entered this way; full screen entered by hand is left alone. Present with one display is
+    /// no exception any more: its audience window floats above the full-screen presenter (feedback round 8).
+    func presentingChanged(_ mode: AppModel.PresentingMode?) {
         guard AppSettings.fullScreenWhilePresenting else { return }
-        let wants: Bool
-        switch mode {
-        case .rehearsal: wants = true
-        case .live: wants = hasAudienceDisplay
-        case nil: wants = false
-        }
-        setFullScreenForPresenting(wants)
+        setFullScreenForPresenting(mode != nil)
     }
 
     private func setFullScreenForPresenting(_ wants: Bool) {
@@ -113,15 +106,26 @@ final class PresenterWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    // Full screen is a Space of its own: the windowed audience view rides above this window as its child while it
+    // is there, attached once the transition is over and detached before the one back (feedback round 8).
     func windowWillEnterFullScreen(_ notification: Notification) { transitioning = true }
-    func windowWillExitFullScreen(_ notification: Notification) { transitioning = true }
 
-    func windowDidEnterFullScreen(_ notification: Notification) { transitionFinished() }
+    func windowWillExitFullScreen(_ notification: Notification) {
+        transitioning = true
+        model.presenterFullScreenChanged(nil)
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        model.presenterFullScreenChanged(window)
+        transitionFinished()
+    }
 
     func windowDidExitFullScreen(_ notification: Notification) {
         if hideAfterExitingFullScreen {
             hideAfterExitingFullScreen = false
             window?.orderOut(nil)
+        } else {
+            model.presenterLeftFullScreen()
         }
         transitionFinished()
     }
