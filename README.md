@@ -38,7 +38,7 @@ See `CLAUDE.md` for the repo layout, conventions and gotchas, `docs/decisions.md
 
 ## Releases
 
-`Scripts/release.sh` builds a Release `Lectern.app`, signs it with the hardened runtime, and wraps it in `dist/Lectern-<version>.dmg` with an Applications shortcut, ready to upload to a website. The version comes from `project.yml`.
+`Scripts/release.sh` builds a Release `Lectern.app`, signs it with the hardened runtime, and wraps it in `dist/Lectern-<version>.dmg` with an Applications shortcut. The version comes from `project.yml`. Downloads live on [GitHub Releases](https://github.com/bblockwood/Lectern/releases).
 
 What a download needs to open without a Gatekeeper warning:
 
@@ -49,7 +49,11 @@ What a download needs to open without a Gatekeeper warning:
 
    Then build with `NOTARY_PROFILE=Lectern Scripts/release.sh`; the script submits the DMG, waits, and staples the ticket.
 
-Bump `CFBundleShortVersionString` and `CFBundleVersion` in `project.yml` for each release.
+3. **The GitHub release.** With `GITHUB_RELEASE=1` the script also tags HEAD as `v<version>` (unless that tag exists there already), pushes the tag, and creates the release with the DMG attached. `RELEASE_NOTES=notes.md` supplies the notes; otherwise they are generated from the commits since the previous release. Needs the GitHub CLI (`brew install gh`, `gh auth login`) and a clean working tree. The script ends by printing the download URL to put on the website.
+
+For each release: bump `CFBundleShortVersionString` and `CFBundleVersion` in `project.yml`, commit, then
+
+    GITHUB_RELEASE=1 NOTARY_PROFILE=Lectern Scripts/release.sh
 
 
 ## License
