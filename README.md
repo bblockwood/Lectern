@@ -51,3 +51,7 @@ What a download needs to open without a Gatekeeper warning:
 
 Bump `CFBundleShortVersionString` and `CFBundleVersion` in `project.yml` for each release.
 
+
+## License
+
+Lectern is released under the MIT License; see `LICENSE`. The Lectern name and the app icon are not part of that grant, so please give a fork its own name and artwork.
