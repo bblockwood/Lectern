@@ -1,6 +1,6 @@
-# Lectern
+# Lectern: PDF Presenter
 
-A PDF presenter for macOS, iPadOS, iOS and watchOS, built for Beamer decks: presenter view with notes and timer, an audience window on the projector, frame-aware navigation, live reload while you recompile, pointer and ink. `SPEC.md` is the design; `docs/progress.md` is where each milestone is reported.
+A PDF presenter for macOS (and eventually iPadOS and iOS) built for Beamer decks: presenter view with notes and timer, an audience window on the projector, frame-aware navigation, live reload when you recompile, laser-style pointer, and on-slide drawing capabilities. `SPEC.md` is the design; `docs/progress.md` is where each milestone is reported. Designed by [Ben Lockwood](https://benlockwood.com), manufactured by Claude. 
 
 ## Build on a new machine
 
